@@ -64,6 +64,9 @@
       "default": "./dist/component/convex.config.js"
     }
   },
+  "dependencies": {
+    "aws4fetch": "^1.0.20"
+  },
   "peerDependencies": {
     "convex": "^1.29.3",
     "react": "^18.3.1 || ^19.0.0"
