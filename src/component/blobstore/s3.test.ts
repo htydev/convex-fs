@@ -208,21 +208,23 @@ describe("createS3BlobStore", () => {
   });
 
   describe("delete", () => {
-    it("sends DELETE request", async () => {
+    it("sends DELETE request and returns deleted status", async () => {
       const mockFetch = vi
         .fn()
         .mockResolvedValue(new Response(null, { status: 204 }));
       globalThis.fetch = mockFetch;
 
       const store = createS3BlobStore(TEST_CONFIG);
-      await store.delete("test-key");
+      const result = await store.delete("test-key");
+
+      expect(result).toEqual({ status: "deleted" });
 
       const request = mockFetch.mock.calls[0][0] as Request;
       expect(request.method).toBe("DELETE");
       expect(request.url).toContain("/test-key");
     });
 
-    it("does not throw on 404 (idempotent)", async () => {
+    it("returns not_found on 404", async () => {
       const mockFetch = vi
         .fn()
         .mockResolvedValue(new Response(null, { status: 404 }));
@@ -230,7 +232,8 @@ describe("createS3BlobStore", () => {
 
       const store = createS3BlobStore(TEST_CONFIG);
 
-      await expect(store.delete("nonexistent-key")).resolves.toBeUndefined();
+      const result = await store.delete("nonexistent-key");
+      expect(result).toEqual({ status: "not_found" });
     });
 
     it("throws on other errors", async () => {

@@ -14,6 +14,9 @@ export const configValidator = v.object({
   // Presigned URL TTL configuration (in seconds)
   uploadUrlTtl: v.optional(v.number()), // defaults to 3600 (1 hour)
   downloadUrlTtl: v.optional(v.number()), // defaults to 3600 (1 hour)
+
+  // GC configuration
+  blobGracePeriod: v.optional(v.number()), // seconds before orphaned blobs are deleted, defaults to 86400 (24 hours)
 });
 
 /** TypeScript type derived from the config validator. */

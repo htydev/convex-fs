@@ -53,6 +53,15 @@ export interface BlobMetadata {
 }
 
 /**
+ * Result of a delete operation.
+ * - "deleted": The blob was successfully deleted from storage
+ * - "not_found": The blob did not exist (may have already been deleted)
+ *
+ * Note: Throws on actual S3 errors (5xx, network issues).
+ */
+export type DeleteResult = { status: "deleted" } | { status: "not_found" };
+
+/**
  * Interface for a blob store that supports basic CRUD operations
  * and presigned URL generation for client-side uploads/downloads.
  */
@@ -93,7 +102,9 @@ export interface BlobStore {
   exists(key: string): Promise<boolean>;
 
   /**
-   * Delete a blob. Idempotent - does not throw if blob doesn't exist.
+   * Delete a blob.
+   * Returns { status: "deleted" } on success, { status: "not_found" } if blob didn't exist.
+   * Throws on actual S3 errors (5xx, network issues).
    */
-  delete(key: string): Promise<void>;
+  delete(key: string): Promise<DeleteResult>;
 }

@@ -8,9 +8,12 @@
  * @module
  */
 
+import type * as background from "../background.js";
 import type * as blobstore_index from "../blobstore/index.js";
 import type * as blobstore_s3 from "../blobstore/s3.js";
 import type * as blobstore_types from "../blobstore/types.js";
+import type * as config from "../config.js";
+import type * as crons from "../crons.js";
 import type * as lib from "../lib.js";
 import type * as ops from "../ops.js";
 import type * as transfer from "../transfer.js";
@@ -24,9 +27,12 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
+  background: typeof background;
   "blobstore/index": typeof blobstore_index;
   "blobstore/s3": typeof blobstore_s3;
   "blobstore/types": typeof blobstore_types;
+  config: typeof config;
+  crons: typeof crons;
   lib: typeof lib;
   ops: typeof ops;
   transfer: typeof transfer;

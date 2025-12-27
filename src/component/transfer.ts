@@ -34,6 +34,10 @@ export const prepareUpload = action({
   }),
   handler: async (ctx, args) => {
     const { config } = args;
+
+    // Store config for background GC (components can't access env vars)
+    await ctx.runMutation(internal.config.ensureConfigStored, { config });
+
     const blobId = crypto.randomUUID();
     const ttl = config.uploadUrlTtl ?? DEFAULT_URL_TTL;
     const expiresAt = Date.now() + ttl * 1000;

@@ -6,6 +6,7 @@ import type {
   DownloadUrlOptions,
   PutOptions,
   BlobMetadata,
+  DeleteResult,
 } from "./types.js";
 
 const DEFAULT_EXPIRES_IN = 3600; // 1 hour
@@ -156,17 +157,21 @@ export function createS3BlobStore(config: S3BlobStoreConfig): BlobStore {
       return metadata !== null;
     },
 
-    async delete(key: string): Promise<void> {
+    async delete(key: string): Promise<DeleteResult> {
       const url = buildUrl(key);
       const response = await client.fetch(url, { method: "DELETE" });
 
-      // S3 returns 204 on success, and also handles non-existent objects gracefully
-      // We only throw on unexpected errors
-      if (!response.ok && response.status !== 404) {
+      if (response.status === 404) {
+        return { status: "not_found" };
+      }
+
+      if (!response.ok) {
         throw new Error(
           `Failed to delete blob: ${response.status} ${response.statusText}`,
         );
       }
+
+      return { status: "deleted" };
     },
   };
 }

@@ -30,6 +30,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           config: {
             accessKeyId: string;
+            blobGracePeriod?: number;
             downloadUrlTtl?: number;
             endpoint: string;
             region?: string;
@@ -48,6 +49,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           blobId: string;
           config: {
             accessKeyId: string;
+            blobGracePeriod?: number;
             downloadUrlTtl?: number;
             endpoint: string;
             region?: string;
@@ -64,6 +66,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           config: {
             accessKeyId: string;
+            blobGracePeriod?: number;
             downloadUrlTtl?: number;
             endpoint: string;
             region?: string;
@@ -80,6 +83,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           config: {
             accessKeyId: string;
+            blobGracePeriod?: number;
             downloadUrlTtl?: number;
             endpoint: string;
             region?: string;
@@ -102,6 +106,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           config: {
             accessKeyId: string;
+            blobGracePeriod?: number;
             downloadUrlTtl?: number;
             endpoint: string;
             region?: string;
@@ -151,6 +156,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           config: {
             accessKeyId: string;
+            blobGracePeriod?: number;
             downloadUrlTtl?: number;
             endpoint: string;
             region?: string;
@@ -168,6 +174,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           config: {
             accessKeyId: string;
+            blobGracePeriod?: number;
             downloadUrlTtl?: number;
             endpoint: string;
             region?: string;
@@ -190,6 +197,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           config: {
             accessKeyId: string;
+            blobGracePeriod?: number;
             downloadUrlTtl?: number;
             endpoint: string;
             region?: string;
@@ -240,6 +248,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           blobId: string;
           config: {
             accessKeyId: string;
+            blobGracePeriod?: number;
             downloadUrlTtl?: number;
             endpoint: string;
             region?: string;
@@ -256,6 +265,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           config: {
             accessKeyId: string;
+            blobGracePeriod?: number;
             downloadUrlTtl?: number;
             endpoint: string;
             region?: string;
