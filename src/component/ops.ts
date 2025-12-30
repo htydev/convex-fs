@@ -2,13 +2,14 @@ import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import {
   action,
+  internalAction,
   internalMutation,
   internalQuery,
   mutation,
   query,
 } from "./_generated/server.js";
 import { api, internal } from "./_generated/api.js";
-import { createS3BlobStore } from "./blobstore/index.js";
+import { createBlobStore } from "./blobstore/index.js";
 import type { BlobMetadata } from "./blobstore/index.js";
 import {
   configValidator,
@@ -163,50 +164,77 @@ export const commitFiles = action({
       return null;
     }
 
-    // Create blob store client
-    const store = createS3BlobStore({
-      accessKeyId: config.accessKeyId,
-      secretAccessKey: config.secretAccessKey,
-      endpoint: config.endpoint,
-      region: config.region,
-    });
-
-    // 1. Verify all blobs exist in S3 and collect metadata
-    const metadataResults = await Promise.all(
-      files.map(async (file) => {
-        const metadata = await store.head(file.blobId);
-        return { blobId: file.blobId, metadata };
-      }),
+    // 1. Check uploads table for cached metadata (from proxy uploads)
+    const blobIds = files.map((f) => f.blobId);
+    const uploadRecords = await ctx.runQuery(
+      internal.transfer.getUploadsByBlobIds,
+      { blobIds },
     );
 
-    // Check all blobs exist
-    const missingBlobs = metadataResults.filter((r) => r.metadata === null);
-    if (missingBlobs.length > 0) {
-      const missingIds = missingBlobs.map((r) => r.blobId).join(", ");
-      throw new Error(`Blobs not found in object store: ${missingIds}`);
+    // Build map of cached metadata from uploads table
+    const cachedMetadataMap = new Map<
+      string,
+      { contentType: string; size: number }
+    >();
+    for (const record of uploadRecords) {
+      if (
+        record &&
+        record.contentType !== undefined &&
+        record.size !== undefined
+      ) {
+        cachedMetadataMap.set(record.blobId, {
+          contentType: record.contentType,
+          size: record.size,
+        });
+      }
     }
 
-    // Build metadata map
-    const metadataMap = new Map<string, BlobMetadata>();
-    for (const result of metadataResults) {
-      metadataMap.set(result.blobId, result.metadata!);
+    // 2. For blobs without cached metadata, fetch from storage (S3 presigned URL flow)
+    const blobsNeedingHead = files.filter(
+      (f) => !cachedMetadataMap.has(f.blobId),
+    );
+
+    if (blobsNeedingHead.length > 0) {
+      const store = createBlobStore(config.storage);
+      const metadataResults = await Promise.all(
+        blobsNeedingHead.map(async (file) => {
+          const metadata = await store.head(file.blobId);
+          return { blobId: file.blobId, metadata };
+        }),
+      );
+
+      // Check all blobs exist
+      const missingBlobs = metadataResults.filter((r) => r.metadata === null);
+      if (missingBlobs.length > 0) {
+        const missingIds = missingBlobs.map((r) => r.blobId).join(", ");
+        throw new Error(`Blobs not found in object store: ${missingIds}`);
+      }
+
+      // Add to cached metadata map
+      for (const result of metadataResults) {
+        cachedMetadataMap.set(result.blobId, {
+          contentType:
+            result.metadata!.contentType ?? "application/octet-stream",
+          size: result.metadata!.contentLength,
+        });
+      }
     }
 
-    // 2. Prepare files with metadata for the internal mutation
+    // 3. Prepare files with metadata for the internal mutation
     const filesWithMetadata = files.map((file) => {
-      const metadata = metadataMap.get(file.blobId)!;
+      const metadata = cachedMetadataMap.get(file.blobId)!;
       return {
         path: file.path,
         blobId: file.blobId,
         basis: file.basis,
         metadata: {
-          contentType: metadata.contentType ?? "application/octet-stream",
-          size: metadata.contentLength,
+          contentType: metadata.contentType,
+          size: metadata.size,
         },
       };
     });
 
-    // 3. Commit atomically via internal mutation (handles CAS check)
+    // 4. Commit atomically via internal mutation (handles CAS check)
     await ctx.runMutation(internal.ops.commitFilesInternal, {
       files: filesWithMetadata,
     });
@@ -618,6 +646,121 @@ export const deleteByPath = mutation({
       config: args.config,
       ops: [{ op: "delete", source }],
     });
+    return null;
+  },
+});
+
+// ============================================================================
+// Internal Dev Utilities
+// ============================================================================
+
+/**
+ * Restore a file by re-linking an existing blob to a path.
+ *
+ * This is an admin utility for recovering accidentally deleted files.
+ * It increments the blob's refCount and creates a new file record.
+ *
+ * NOTE: There's a small race condition if the blob is being GC'd at the
+ * exact moment of restore. In practice this is unlikely since GC runs
+ * periodically and has a grace period.
+ *
+ * @throws If blob doesn't exist (may have been garbage collected)
+ */
+export const restore = internalMutation({
+  args: {
+    blobId: v.string(),
+    path: v.string(),
+  },
+  returns: fileMetadataValidator,
+  handler: async (ctx, args) => {
+    // 1. Look up blob
+    const blob = await ctx.db
+      .query("blobs")
+      .withIndex("blobId", (q) => q.eq("blobId", args.blobId))
+      .unique();
+
+    if (!blob) {
+      throw new Error(
+        `Blob not found: "${args.blobId}". It may have been garbage collected.`,
+      );
+    }
+
+    // 2. Increment refCount
+    const now = Date.now();
+    await ctx.db.patch(blob._id, {
+      refCount: blob.refCount + 1,
+      updatedAt: now,
+    });
+
+    // 3. Insert file record
+    await ctx.db.insert("files", {
+      path: args.path,
+      blobId: args.blobId,
+    });
+
+    // 4. Return metadata
+    return {
+      path: args.path,
+      blobId: args.blobId,
+      contentType: blob.metadata.contentType,
+      size: blob.metadata.size,
+    };
+  },
+});
+
+/**
+ * Delete all files from the filesystem.
+ *
+ * This is an internal dev utility that deletes files in batches of 100,
+ * rescheduling itself until all files are gone. Orphaned blobs will be
+ * cleaned up by the background garbage collector.
+ *
+ * Reads config from the config table (key: "storage").
+ */
+export const clearAllFiles = internalAction({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    // Read config from config table
+    const configDoc = await ctx.runQuery(internal.config.getConfig, {
+      key: "storage",
+    });
+    if (!configDoc) {
+      throw new Error(
+        'No config found in config table with key "storage". ' +
+          "Upload a file first to initialize the config.",
+      );
+    }
+    const config = configDoc.value;
+
+    // Get a page of files
+    const result = await ctx.runQuery(api.ops.list, {
+      config,
+      paginationOpts: { numItems: 100, cursor: null },
+    });
+
+    if (result.page.length === 0) {
+      // Done - no more files
+      console.log("clearAllFiles: No more files to delete");
+      return null;
+    }
+
+    console.log(`clearAllFiles: Deleting ${result.page.length} files`);
+
+    // Delete all files in this page
+    await ctx.runMutation(api.ops.transact, {
+      config,
+      ops: result.page.map((file) => ({
+        op: "delete" as const,
+        source: file,
+      })),
+    });
+
+    // If we got a full page, there might be more - reschedule
+    if (result.page.length === 100) {
+      await ctx.scheduler.runAfter(0, internal.ops.clearAllFiles, {});
+    }
+
     return null;
   },
 });

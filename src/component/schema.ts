@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { storageConfigValidator } from "./validators";
 
 export default defineSchema({
   // Pending uploads awaiting commit
@@ -8,6 +9,10 @@ export default defineSchema({
     blobId: v.string(),
     // Unix timestamp (ms) when the presigned upload URL expires
     expiresAt: v.number(),
+    // Optional metadata for proxy uploads (known at upload time)
+    // For S3 presigned URL uploads, these are not set - we call head() at commit time
+    contentType: v.optional(v.string()),
+    size: v.optional(v.number()),
   })
     .index("blobId", ["blobId"])
     .index("expiresAt", ["expiresAt"]), // For GC queries
@@ -44,13 +49,14 @@ export default defineSchema({
   config: defineTable({
     key: v.string(),
     value: v.object({
-      accessKeyId: v.string(),
-      secretAccessKey: v.string(),
-      endpoint: v.string(),
-      region: v.optional(v.string()),
+      // Storage backend configuration (S3 or Bunny)
+      storage: storageConfigValidator,
+      // Presigned URL TTL configuration (in seconds)
       uploadUrlTtl: v.optional(v.number()),
       downloadUrlTtl: v.optional(v.number()),
+      // GC configuration
       blobGracePeriod: v.optional(v.number()), // Seconds before orphaned blobs are deleted
+      freezeGc: v.optional(v.boolean()), // If true, all GC jobs will NOOP (emergency stop)
     }),
   }).index("key", ["key"]),
 });

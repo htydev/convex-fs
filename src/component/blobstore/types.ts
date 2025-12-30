@@ -19,6 +19,40 @@ export interface S3BlobStoreConfig {
 }
 
 /**
+ * Configuration for creating a Bunny.net Edge Storage blob store.
+ */
+export interface BunnyBlobStoreConfig {
+  /** Bunny.net Edge Storage API key (found in FTP & API Access section) */
+  apiKey: string;
+  /** Name of the storage zone */
+  storageZoneName: string;
+  /**
+   * Region for the storage zone endpoint.
+   * Leave empty for Frankfurt (default), or use:
+   * - "uk" for London
+   * - "ny" for New York
+   * - "la" for Los Angeles
+   * - "sg" for Singapore
+   * - "se" for Stockholm
+   * - "br" for São Paulo
+   * - "jh" for Johannesburg
+   * - "syd" for Sydney
+   */
+  region?: string;
+  /**
+   * CDN hostname for downloads.
+   * This is the full hostname, e.g., "myzone.b-cdn.net" or a custom domain like "cdn.example.com".
+   */
+  cdnHostname: string;
+  /**
+   * Token authentication key for signed CDN URLs.
+   * Found in Pull Zone > Security > Token Authentication.
+   * If not provided, URLs will be unsigned (requires public Pull Zone).
+   */
+  tokenKey?: string;
+}
+
+/**
  * Options for generating a presigned upload URL.
  */
 export interface UploadUrlOptions {

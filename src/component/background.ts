@@ -13,7 +13,7 @@ import {
   internalQuery,
 } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
-import { createS3BlobStore } from "./blobstore/index.js";
+import { createBlobStore } from "./blobstore/index.js";
 
 // =============================================================================
 // Constants
@@ -92,7 +92,7 @@ export const gcExpiredUploads = internalAction({
   handler: async (ctx): Promise<null> => {
     // 1. Get stored config
     const configDoc = await ctx.runQuery(internal.config.getConfig, {
-      key: "s3",
+      key: "storage",
     });
 
     if (!configDoc) {
@@ -101,6 +101,12 @@ export const gcExpiredUploads = internalAction({
     }
 
     const config = configDoc.value;
+
+    // Check if GC is frozen (emergency stop)
+    if (config.freezeGc) {
+      console.log("[UGC] GC is frozen (freezeGc=true), skipping cleanup");
+      return null;
+    }
 
     // 2. Find expired uploads (URL expired + grace period)
     const threshold = Date.now() - UPLOAD_GRACE_PERIOD_MS;
@@ -116,13 +122,8 @@ export const gcExpiredUploads = internalAction({
 
     console.log(`[UGC] Found ${expired.length} expired uploads to clean up`);
 
-    // 3. Delete blobs from S3 in parallel, tracking results
-    const store = createS3BlobStore({
-      accessKeyId: config.accessKeyId,
-      secretAccessKey: config.secretAccessKey,
-      endpoint: config.endpoint,
-      region: config.region,
-    });
+    // 3. Delete blobs from storage in parallel, tracking results
+    const store = createBlobStore(config.storage);
 
     const results = await Promise.all(
       expired.map(async (upload) => {
@@ -240,7 +241,7 @@ export const gcOrphanedBlobs = internalAction({
   handler: async (ctx): Promise<null> => {
     // 1. Get stored config
     const configDoc = await ctx.runQuery(internal.config.getConfig, {
-      key: "s3",
+      key: "storage",
     });
 
     if (!configDoc) {
@@ -249,6 +250,12 @@ export const gcOrphanedBlobs = internalAction({
     }
 
     const config = configDoc.value;
+
+    // Check if GC is frozen (emergency stop)
+    if (config.freezeGc) {
+      console.log("[BGC] GC is frozen (freezeGc=true), skipping cleanup");
+      return null;
+    }
 
     // 2. Calculate threshold using configured grace period
     const gracePeriodS = config.blobGracePeriod ?? DEFAULT_BLOB_GRACE_PERIOD_S;
@@ -267,13 +274,8 @@ export const gcOrphanedBlobs = internalAction({
 
     console.log(`[BGC] Found ${orphaned.length} orphaned blobs to clean up`);
 
-    // 4. Delete blobs from S3 in parallel, tracking results
-    const store = createS3BlobStore({
-      accessKeyId: config.accessKeyId,
-      secretAccessKey: config.secretAccessKey,
-      endpoint: config.endpoint,
-      region: config.region,
-    });
+    // 4. Delete blobs from storage in parallel, tracking results
+    const store = createBlobStore(config.storage);
 
     const results = await Promise.all(
       orphaned.map(async (blob) => {
@@ -344,6 +346,17 @@ export const gcExpiredDownloadUrls = internalMutation({
   args: {},
   returns: v.null(),
   handler: async (ctx): Promise<null> => {
+    // Check if GC is frozen (emergency stop)
+    const configDoc = await ctx.db
+      .query("config")
+      .withIndex("key", (q) => q.eq("key", "storage"))
+      .unique();
+
+    if (configDoc?.value.freezeGc) {
+      console.log("[DGC] GC is frozen (freezeGc=true), skipping cleanup");
+      return null;
+    }
+
     const now = Date.now();
 
     // Find expired download URL cache entries

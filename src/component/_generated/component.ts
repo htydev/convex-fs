@@ -29,12 +29,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           files: Array<{ basis?: string; blobId: string; path: string }>;
@@ -47,12 +59,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           destPath: string;
@@ -66,12 +90,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           path: string;
@@ -85,12 +121,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           blobId: string;
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
         },
@@ -102,12 +150,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           paginationOpts: {
@@ -137,12 +197,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           destPath: string;
@@ -156,12 +228,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
         },
@@ -173,12 +257,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           path: string;
@@ -196,12 +292,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           ops: Array<
@@ -239,6 +347,37 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
+      uploadBlob: FunctionReference<
+        "action",
+        "internal",
+        {
+          config: {
+            blobGracePeriod?: number;
+            downloadUrlTtl?: number;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
+            uploadUrlTtl?: number;
+          };
+          contentType: string;
+          data: ArrayBuffer;
+        },
+        { blobId: string },
+        Name
+      >;
     };
     ops: {
       commitFiles: FunctionReference<
@@ -246,12 +385,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           files: Array<{ basis?: string; blobId: string; path: string }>;
@@ -264,12 +415,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           destPath: string;
@@ -283,12 +446,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           path: string;
@@ -301,12 +476,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           paginationOpts: {
@@ -336,12 +523,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           destPath: string;
@@ -355,12 +554,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           path: string;
@@ -378,12 +589,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
           ops: Array<
@@ -429,12 +652,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           blobId: string;
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
         },
@@ -446,16 +681,59 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           config: {
-            accessKeyId: string;
             blobGracePeriod?: number;
             downloadUrlTtl?: number;
-            endpoint: string;
-            region?: string;
-            secretAccessKey: string;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
             uploadUrlTtl?: number;
           };
         },
         { blobId: string; url: string },
+        Name
+      >;
+      uploadBlob: FunctionReference<
+        "action",
+        "internal",
+        {
+          config: {
+            blobGracePeriod?: number;
+            downloadUrlTtl?: number;
+            storage:
+              | {
+                  accessKeyId: string;
+                  endpoint: string;
+                  region?: string;
+                  secretAccessKey: string;
+                  type: "s3";
+                }
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                };
+            uploadUrlTtl?: number;
+          };
+          contentType: string;
+          data: ArrayBuffer;
+        },
+        { blobId: string },
         Name
       >;
     };

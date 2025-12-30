@@ -34,6 +34,7 @@
 
 import { httpActionGeneric } from "convex/server";
 import type { PaginationOptions, PaginationResult } from "convex/server";
+import { corsRouter } from "convex-helpers/server/cors";
 import type { ComponentApi } from "../component/_generated/component.js";
 import type {
   QueryCtx,
@@ -66,60 +67,46 @@ export type FSComponent = ComponentApi;
 /**
  * ConvexFS client for interacting with the blob store component.
  *
- * Configuration is read from environment variables by default:
- * - FS_ACCESS_KEY_ID
- * - FS_SECRET_ACCESS_KEY
- * - FS_ENDPOINT
- * - FS_REGION (optional)
- *
- * You can override these in the constructor for multi-store setups.
+ * Configuration requires a `storage` option specifying the backend type:
  *
  * @example
  * ```typescript
- * // Default: reads from env vars
- * const fs = new ConvexFS(components.fs);
+ * // S3-compatible storage
+ * const fs = new ConvexFS(components.fs, {
+ *   storage: {
+ *     type: "s3",
+ *     accessKeyId: process.env.FS_ACCESS_KEY_ID!,
+ *     secretAccessKey: process.env.FS_SECRET_ACCESS_KEY!,
+ *     endpoint: process.env.FS_ENDPOINT!,
+ *     region: process.env.FS_REGION,
+ *   },
+ * });
  *
- * // Override for multiple stores
- * const userUploads = new ConvexFS(components.fs, {
- *   FS_ACCESS_KEY_ID: process.env.USER_UPLOADS_ACCESS_KEY,
- *   FS_SECRET_ACCESS_KEY: process.env.USER_UPLOADS_SECRET_KEY,
- *   FS_ENDPOINT: process.env.USER_UPLOADS_ENDPOINT,
+ * // Bunny.net Edge Storage
+ * const fs = new ConvexFS(components.fs, {
+ *   storage: {
+ *     type: "bunny",
+ *     apiKey: process.env.BUNNY_API_KEY!,
+ *     storageZoneName: process.env.BUNNY_STORAGE_ZONE!,
+ *     region: process.env.BUNNY_REGION,
+ *     pullZoneHostname: process.env.BUNNY_PULL_ZONE!,
+ *   },
  * });
  * ```
  */
 export class ConvexFS {
   constructor(
     public component: ComponentApi,
-    private options: ConvexFSOptions = {},
+    private options: ConvexFSOptions,
   ) {}
 
   /**
-   * Build config from options + env vars.
-   * Throws if required values are missing.
+   * Build config from options.
+   * Used internally and by registerRoutes for the upload proxy.
    */
-  private get config() {
-    const accessKeyId =
-      this.options.FS_ACCESS_KEY_ID ?? process.env.FS_ACCESS_KEY_ID;
-    const secretAccessKey =
-      this.options.FS_SECRET_ACCESS_KEY ?? process.env.FS_SECRET_ACCESS_KEY;
-    const endpoint = this.options.FS_ENDPOINT ?? process.env.FS_ENDPOINT;
-    const region = this.options.FS_REGION ?? process.env.FS_REGION;
-
-    if (!accessKeyId) {
-      throw new Error("FS_ACCESS_KEY_ID is not set");
-    }
-    if (!secretAccessKey) {
-      throw new Error("FS_SECRET_ACCESS_KEY is not set");
-    }
-    if (!endpoint) {
-      throw new Error("FS_ENDPOINT is not set");
-    }
-
+  get config() {
     return {
-      accessKeyId,
-      secretAccessKey,
-      endpoint,
-      region,
+      storage: this.options.storage,
       uploadUrlTtl: this.options.uploadUrlTtl,
       downloadUrlTtl: this.options.downloadUrlTtl,
       blobGracePeriod: this.options.blobGracePeriod,
@@ -464,31 +451,46 @@ export class ConvexFS {
 }
 
 /**
- * Register HTTP routes for blob downloads.
+ * Register HTTP routes for blob downloads and uploads.
  *
- * Creates a route at `{pathPrefix}/{blobId}` that returns a 302 redirect
- * to the presigned download URL.
+ * Creates routes under the given pathPrefix:
+ * - POST `{pathPrefix}/upload` - Upload proxy (for Bunny.net storage)
+ * - GET `{pathPrefix}/blobs/{blobId}` - Returns 302 redirect to download URL
  *
  * @param http - The HTTP router instance
  * @param component - The FS component reference
- * @param config - Optional configuration
+ * @param fs - A ConvexFS instance with storage configuration
+ * @param config - Optional configuration (auth, pathPrefix)
  *
  * @example
  * ```typescript
  * // convex/http.ts
  * import { httpRouter } from "convex/server";
- * import { registerRoutes } from "@convex/fs";
+ * import { ConvexFS, registerRoutes } from "@convex/fs";
  * import { components } from "./_generated/api";
  *
  * const http = httpRouter();
  *
- * registerRoutes(http, components.fs, {
- *   pathPrefix: "/blobs",
+ * const fs = new ConvexFS(components.fs, {
+ *   storage: {
+ *     type: "bunny",
+ *     apiKey: process.env.BUNNY_API_KEY!,
+ *     storageZoneName: process.env.BUNNY_STORAGE_ZONE!,
+ *     pullZoneHostname: process.env.BUNNY_PULL_ZONE!,
+ *   },
+ * });
+ *
+ * registerRoutes(http, components.fs, fs, {
+ *   pathPrefix: "/fs",
  *   auth: async (ctx, blobId) => {
  *     const identity = await ctx.auth.getUserIdentity();
  *     return identity !== null;
  *   },
  * });
+ *
+ * // Routes created:
+ * // POST /fs/upload - Upload proxy
+ * // GET /fs/blobs/{blobId} - Download redirect
  *
  * export default http;
  * ```
@@ -496,13 +498,74 @@ export class ConvexFS {
 export function registerRoutes(
   http: HttpRouter,
   component: ComponentApi,
+  fs: ConvexFS,
   config?: RegisterRoutesConfig,
 ): void {
-  const pathPrefix = config?.pathPrefix ?? "/blobs";
+  const pathPrefix = config?.pathPrefix ?? "/fs";
 
-  // Route: GET /blobs/{blobId} -> 302 redirect to presigned URL
-  http.route({
-    path: `${pathPrefix}/{blobId}`,
+  // Create CORS-enabled router for cross-origin requests
+  const cors = corsRouter(http, {
+    allowedOrigins: ["*"],
+    allowedHeaders: ["Content-Type", "Content-Length"],
+  });
+
+  // Route: POST /fs/upload -> Upload proxy (for Bunny.net)
+  // Register exact path first, before prefix route
+  cors.route({
+    path: pathPrefix + "/upload",
+    method: "POST",
+    handler: httpActionGeneric(async (ctx, req) => {
+      const contentType =
+        req.headers.get("Content-Type") ?? "application/octet-stream";
+      const contentLengthHeader = req.headers.get("Content-Length");
+      const contentLength = contentLengthHeader
+        ? parseInt(contentLengthHeader, 10)
+        : 0;
+
+      // Check size limit (16MB)
+      const MAX_UPLOAD_SIZE = 16 * 1024 * 1024;
+      if (contentLength > MAX_UPLOAD_SIZE) {
+        return new Response(
+          JSON.stringify({ error: "File too large (max 16MB)" }),
+          {
+            status: 413,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      try {
+        const data = await req.arrayBuffer();
+
+        // Call the upload action with config (stores config for GC)
+        const result = await ctx.runAction(component.lib.uploadBlob, {
+          config: fs.config,
+          data,
+          contentType,
+        });
+
+        return new Response(JSON.stringify(result), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (error) {
+        console.error("Upload error:", error);
+        return new Response(
+          JSON.stringify({
+            error: error instanceof Error ? error.message : "Upload failed",
+          }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+    }),
+  });
+
+  // Route: GET /fs/blobs/{blobId} -> 302 redirect to presigned URL
+  cors.route({
+    pathPrefix: pathPrefix + "/blobs/",
     method: "GET",
     handler: httpActionGeneric(async (ctx, req) => {
       // Extract blobId from URL
@@ -526,42 +589,27 @@ export function registerRoutes(
         }
       }
 
-      // Build config from options + env vars
-      const accessKeyId =
-        config?.FS_ACCESS_KEY_ID ?? process.env.FS_ACCESS_KEY_ID;
-      const secretAccessKey =
-        config?.FS_SECRET_ACCESS_KEY ?? process.env.FS_SECRET_ACCESS_KEY;
-      const endpoint = config?.FS_ENDPOINT ?? process.env.FS_ENDPOINT;
-      const region = config?.FS_REGION ?? process.env.FS_REGION;
-
-      if (!accessKeyId || !secretAccessKey || !endpoint) {
-        console.error("FS storage not configured: missing env vars");
-        return new Response("Storage not configured", { status: 500 });
-      }
-
-      const fsConfig = {
-        accessKeyId,
-        secretAccessKey,
-        endpoint,
-        region,
-        downloadUrlTtl: config?.downloadUrlTtl,
-      };
-
-      // Check if blob exists by trying to get download URL
-      // The component will throw if the blob doesn't exist
+      // Get download URL using the fs instance's config
       try {
-        const downloadUrl = await ctx.runAction(component.lib.getDownloadUrl, {
-          config: fsConfig,
-          blobId,
-        });
+        const downloadUrl = await fs.getDownloadUrl(ctx, blobId);
 
-        // Return 302 redirect with no-store to prevent caching
-        // (presigned URLs expire, so cached redirects would break)
+        // Determine cache TTL based on storage type
+        // For S3: no-store (presigned URLs have variable TTLs)
+        // For Bunny: cache for token TTL minus buffer
+        let cacheControl = "no-store";
+
+        if (fs.config.storage.type === "bunny") {
+          const tokenTtl = fs.config.downloadUrlTtl ?? 3600; // Default 1 hour
+          const cacheBuffer = 300; // 5 minute buffer
+          const cacheTtl = Math.max(0, tokenTtl - cacheBuffer);
+          cacheControl = `private, max-age=${cacheTtl}`;
+        }
+
         return new Response(null, {
           status: 302,
           headers: {
             Location: downloadUrl,
-            "Cache-Control": "no-store",
+            "Cache-Control": cacheControl,
           },
         });
       } catch (error) {

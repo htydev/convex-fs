@@ -9,6 +9,7 @@
  */
 
 import type * as background from "../background.js";
+import type * as blobstore_bunny from "../blobstore/bunny.js";
 import type * as blobstore_index from "../blobstore/index.js";
 import type * as blobstore_s3 from "../blobstore/s3.js";
 import type * as blobstore_types from "../blobstore/types.js";
@@ -28,6 +29,7 @@ import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
   background: typeof background;
+  "blobstore/bunny": typeof blobstore_bunny;
   "blobstore/index": typeof blobstore_index;
   "blobstore/s3": typeof blobstore_s3;
   "blobstore/types": typeof blobstore_types;

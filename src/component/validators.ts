@@ -1,15 +1,52 @@
 import { v, type Infer } from "convex/values";
 
 /**
- * Validator for blob store configuration.
- * Pass this as an argument to component queries/mutations/actions.
+ * Validator for S3-compatible storage configuration.
  */
-export const configValidator = v.object({
-  // S3-compatible bucket configuration
+export const s3StorageConfigValidator = v.object({
+  type: v.literal("s3"),
   accessKeyId: v.string(),
   secretAccessKey: v.string(),
   endpoint: v.string(),
   region: v.optional(v.string()),
+});
+
+/** TypeScript type for S3 storage config. */
+export type S3StorageConfig = Infer<typeof s3StorageConfigValidator>;
+
+/**
+ * Validator for Bunny.net Edge Storage configuration.
+ */
+export const bunnyStorageConfigValidator = v.object({
+  type: v.literal("bunny"),
+  apiKey: v.string(),
+  storageZoneName: v.string(),
+  region: v.optional(v.string()),
+  cdnHostname: v.string(), // Full hostname, e.g., "myzone.b-cdn.net" or custom domain
+  tokenKey: v.optional(v.string()), // For token-authenticated Pull Zones
+});
+
+/** TypeScript type for Bunny storage config. */
+export type BunnyStorageConfig = Infer<typeof bunnyStorageConfigValidator>;
+
+/**
+ * Discriminated union validator for storage backend configuration.
+ */
+export const storageConfigValidator = v.union(
+  s3StorageConfigValidator,
+  bunnyStorageConfigValidator,
+);
+
+/** TypeScript type for storage config (union of S3 and Bunny). */
+export type StorageConfig = Infer<typeof storageConfigValidator>;
+
+/**
+ * Validator for full blob store configuration.
+ * Pass this as an argument to component queries/mutations/actions.
+ */
+export const configValidator = v.object({
+  // Storage backend configuration
+  storage: storageConfigValidator,
 
   // Presigned URL TTL configuration (in seconds)
   uploadUrlTtl: v.optional(v.number()), // defaults to 3600 (1 hour)
@@ -17,6 +54,8 @@ export const configValidator = v.object({
 
   // GC configuration
   blobGracePeriod: v.optional(v.number()), // seconds before orphaned blobs are deleted, defaults to 86400 (24 hours)
+  // NOTE: freezeGc is a dashboard-only field (not in client config) - set it manually
+  // in the config table to freeze all GC jobs for emergency investigation/recovery
 });
 
 /** TypeScript type derived from the config validator. */

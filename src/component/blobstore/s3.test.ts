@@ -21,7 +21,7 @@ describe("createS3BlobStore", () => {
   });
 
   describe("put", () => {
-    it("sends PUT request with body", async () => {
+    it("sends PUT request with presigned URL", async () => {
       const mockFetch = vi
         .fn()
         .mockResolvedValue(new Response(null, { status: 200 }));
@@ -33,12 +33,10 @@ describe("createS3BlobStore", () => {
       await store.put("test-key", data);
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      const request = mockFetch.mock.calls[0][0] as Request;
-      expect(request.method).toBe("PUT");
-      expect(request.url).toContain("/test-key");
-      expect(request.headers.get("Authorization")).toContain(
-        "AWS4-HMAC-SHA256",
-      );
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain("/test-key");
+      expect(url).toContain("X-Amz-Signature=");
+      expect(options.method).toBe("PUT");
     });
 
     it("sets Content-Type header when provided", async () => {
@@ -52,8 +50,8 @@ describe("createS3BlobStore", () => {
 
       await store.put("test-key", data, { contentType: "image/png" });
 
-      const request = mockFetch.mock.calls[0][0] as Request;
-      expect(request.headers.get("Content-Type")).toBe("image/png");
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers["Content-Type"]).toBe("image/png");
     });
 
     it("throws on non-2xx response", async () => {
@@ -118,6 +116,26 @@ describe("createS3BlobStore", () => {
         "Failed to get blob: 500 Internal Server Error",
       );
     });
+
+    it("uses header-based auth with X-Tigris-Consistent header", async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(new Response(new Uint8Array([1]), { status: 200 }));
+      globalThis.fetch = mockFetch;
+
+      const store = createS3BlobStore(TEST_CONFIG);
+      await store.get("test-key");
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // aws4fetch client.fetch() passes a Request object
+      const request = mockFetch.mock.calls[0][0] as Request;
+      expect(request.url).toContain("/test-key");
+      expect(request.method).toBe("GET");
+      expect(request.headers.get("X-Tigris-Consistent")).toBe("true");
+      expect(request.headers.get("Authorization")).toContain(
+        "AWS4-HMAC-SHA256",
+      );
+    });
   });
 
   describe("head", () => {
@@ -140,9 +158,29 @@ describe("createS3BlobStore", () => {
         contentType: "text/plain",
         contentLength: 1234,
       });
+    });
 
+    it("uses header-based auth with X-Tigris-Consistent header", async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response(null, {
+          status: 200,
+          headers: { "Content-Length": "100" },
+        }),
+      );
+      globalThis.fetch = mockFetch;
+
+      const store = createS3BlobStore(TEST_CONFIG);
+      await store.head("test-key");
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // aws4fetch client.fetch() passes a Request object
       const request = mockFetch.mock.calls[0][0] as Request;
+      expect(request.url).toContain("/test-key");
       expect(request.method).toBe("HEAD");
+      expect(request.headers.get("X-Tigris-Consistent")).toBe("true");
+      expect(request.headers.get("Authorization")).toContain(
+        "AWS4-HMAC-SHA256",
+      );
     });
 
     it("returns null on 404", async () => {
@@ -208,7 +246,7 @@ describe("createS3BlobStore", () => {
   });
 
   describe("delete", () => {
-    it("sends DELETE request and returns deleted status", async () => {
+    it("sends DELETE request with presigned URL and returns deleted status", async () => {
       const mockFetch = vi
         .fn()
         .mockResolvedValue(new Response(null, { status: 204 }));
@@ -219,9 +257,10 @@ describe("createS3BlobStore", () => {
 
       expect(result).toEqual({ status: "deleted" });
 
-      const request = mockFetch.mock.calls[0][0] as Request;
-      expect(request.method).toBe("DELETE");
-      expect(request.url).toContain("/test-key");
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain("/test-key");
+      expect(url).toContain("X-Amz-Signature=");
+      expect(options.method).toBe("DELETE");
     });
 
     it("returns not_found on 404", async () => {
@@ -312,8 +351,8 @@ describe("createS3BlobStore", () => {
       const store = createS3BlobStore(TEST_CONFIG);
       await store.put("key with spaces", new Uint8Array([1]));
 
-      const request = mockFetch.mock.calls[0][0] as Request;
-      expect(request.url).toContain("key%20with%20spaces");
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toContain("key%20with%20spaces");
     });
   });
 
@@ -330,8 +369,10 @@ describe("createS3BlobStore", () => {
       });
       await store.put("test-key", new Uint8Array([1]));
 
-      const request = mockFetch.mock.calls[0][0] as Request;
-      expect(request.url).toBe("https://bucket.s3.amazonaws.com/test-key");
+      const [url] = mockFetch.mock.calls[0];
+      // URL should not have double slashes
+      expect(url).toContain("bucket.s3.amazonaws.com/test-key");
+      expect(url).not.toContain("//test-key");
     });
   });
 });

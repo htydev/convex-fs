@@ -7,17 +7,15 @@
 
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server.js";
-import { configValidator } from "./validators.js";
+import { configValidator, storageConfigValidator } from "./validators.js";
 
 // Validator matching the config table schema
 const storedConfigValidator = v.object({
-  accessKeyId: v.string(),
-  secretAccessKey: v.string(),
-  endpoint: v.string(),
-  region: v.optional(v.string()),
+  storage: storageConfigValidator,
   uploadUrlTtl: v.optional(v.number()),
   downloadUrlTtl: v.optional(v.number()),
   blobGracePeriod: v.optional(v.number()),
+  freezeGc: v.optional(v.boolean()),
 });
 
 /**
@@ -44,30 +42,39 @@ export const getConfig = internalQuery({
 });
 
 /**
- * Store config if not already stored.
+ * Store or update config.
  * Called by prepareUpload to ensure config is available for GC.
+ *
+ * Updates all client-provided config values, but preserves the dashboard-only
+ * `freezeGc` field (which can only be set manually via the Convex dashboard).
  */
 export const ensureConfigStored = internalMutation({
   args: { config: configValidator },
   returns: v.null(),
   handler: async (ctx, args) => {
+    // Use "storage" as the key for config (was "s3" before, now generic)
     const existing = await ctx.db
       .query("config")
-      .withIndex("key", (q) => q.eq("key", "s3"))
+      .withIndex("key", (q) => q.eq("key", "storage"))
       .unique();
+
+    const newValue = {
+      storage: args.config.storage,
+      uploadUrlTtl: args.config.uploadUrlTtl,
+      downloadUrlTtl: args.config.downloadUrlTtl,
+      blobGracePeriod: args.config.blobGracePeriod,
+      // freezeGc is dashboard-only - preserve existing value
+      freezeGc: existing?.value.freezeGc,
+    };
 
     if (!existing) {
       await ctx.db.insert("config", {
-        key: "s3",
-        value: {
-          accessKeyId: args.config.accessKeyId,
-          secretAccessKey: args.config.secretAccessKey,
-          endpoint: args.config.endpoint,
-          region: args.config.region,
-          uploadUrlTtl: args.config.uploadUrlTtl,
-          downloadUrlTtl: args.config.downloadUrlTtl,
-          blobGracePeriod: args.config.blobGracePeriod,
-        },
+        key: "storage",
+        value: newValue,
+      });
+    } else {
+      await ctx.db.patch(existing._id, {
+        value: newValue,
       });
     }
 
