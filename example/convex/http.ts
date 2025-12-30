@@ -1,5 +1,5 @@
 import { httpRouter } from "convex/server";
-import { registerRoutes } from "@convex/fs";
+import { registerRoutes } from "convex-fs";
 import { components } from "./_generated/api";
 import { fs } from "./fs";
 

@@ -32,7 +32,7 @@ export const commitImage = mutation({
 
 /**
  * List images with pagination.
- * Compatible with usePaginatedQuery from @convex/fs/react.
+ * Compatible with usePaginatedQuery from convex-fs/react.
  */
 export const listImages = query({
   args: {

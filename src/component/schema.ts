@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { storageConfigValidator } from "./validators";
+import { storageConfigValidator } from "./types";
 
 export default defineSchema({
   // Pending uploads awaiting commit
@@ -46,6 +46,7 @@ export default defineSchema({
       // GC configuration
       blobGracePeriod: v.optional(v.number()), // Seconds before orphaned blobs are deleted
       freezeGc: v.optional(v.boolean()), // If true, all GC jobs will NOOP (emergency stop)
+      allowClearAllFiles: v.optional(v.boolean()), // Must be true to allow clearAllFiles (safety check)
     }),
     checksum: v.optional(v.string()),
   }).index("key", ["key"]),

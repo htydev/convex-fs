@@ -7,7 +7,7 @@
 
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server.js";
-import { configValidator, storageConfigValidator } from "./validators.js";
+import { configValidator, storageConfigValidator } from "./types.js";
 import stringify from "fast-json-stable-stringify";
 
 async function sha256Hex(s: string): Promise<string> {
@@ -30,6 +30,7 @@ const storedConfigValidator = v.object({
   downloadUrlTtl: v.optional(v.number()),
   blobGracePeriod: v.optional(v.number()),
   freezeGc: v.optional(v.boolean()),
+  allowClearAllFiles: v.optional(v.boolean()),
 });
 
 /**

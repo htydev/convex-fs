@@ -47,6 +47,7 @@ export default defineConfig({
               slug: "guides/transactions-atomicity",
             },
             { label: "Authn & authz", slug: "guides/authn-authz" },
+            { label: "Garbage collection", slug: "guides/garbage-collection" },
             {
               label: "Advanced configuration",
               slug: "guides/advanced-configuration",

@@ -19,7 +19,7 @@ is set up in the usual way.
 First, install the component package.
 
 ```bash
-$ npm i @convex/fs
+$ npm i convex-fs
 ```
 
 Then, add it the component to your app by registering the component in your
@@ -27,7 +27,7 @@ Then, add it the component to your app by registering the component in your
 
 ```tsx
 import { defineApp } from "convex/server";
-import fs from "@convex/fs/convex.config.js";
+import fs from "convex-fs/convex.config.js";
 
 const app = defineApp();
 app.use(fs);
@@ -48,7 +48,7 @@ In a TypeScript file in your project's `convex/` directory you'll want to create
 an instance of the `ConvexFS` class. (We recommend naming this file `fs.ts`):
 
 ```tsx
-import { ConvexFS } from "@convex/fs";
+import { ConvexFS } from "convex-fs";
 import { components } from "./_generated/api";
 
 // Using Bunny.net Edge Storage with token-authenticated Pull Zone
@@ -91,7 +91,7 @@ Then, put the following into `convex/http.ts`:
 
 ```tsx
 import { httpRouter } from "convex/server";
-import { registerRoutes } from "@convex/fs";
+import { registerRoutes } from "convex-fs";
 import { components } from "./_generated/api";
 import { fs } from "./fs";
 
@@ -128,7 +128,8 @@ This delegates the http paths at `/fs/*` to this instance of ConvexFS.
   and download for now. We'll go much deeper into this subject in
   [later](/guides/authn-authz).
 
-  **Make sure to fix this before deploying your app to production!**
+**Make sure to fix this before deploying your app to production!**
+
 </Aside>
 
 ## What's next

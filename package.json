@@ -1,5 +1,5 @@
 {
-  "name": "@convex/fs",
+  "name": "convex-fs",
   "description": "A fs component for Convex.",
   "repository": "github:get-convex/fs-component",
   "homepage": "https://github.com/get-convex/fs-component#readme",

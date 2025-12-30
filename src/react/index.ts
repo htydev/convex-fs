@@ -6,7 +6,7 @@
  * @example
  * ```typescript
  * // In your React component
- * import { usePaginatedQuery } from "@convex/fs/react";
+ * import { usePaginatedQuery } from "convex-fs/react";
  * import { api } from "./convex/_generated/api";
  *
  * function FileList({ prefix }: { prefix: string }) {

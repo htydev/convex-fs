@@ -16,9 +16,11 @@ import type * as blobstore_types from "../blobstore/types.js";
 import type * as config from "../config.js";
 import type * as crons from "../crons.js";
 import type * as lib from "../lib.js";
-import type * as ops from "../ops.js";
+import type * as ops_basics from "../ops/basics.js";
+import type * as ops_transact from "../ops/transact.js";
+import type * as ops_types from "../ops/types.js";
 import type * as transfer from "../transfer.js";
-import type * as validators from "../validators.js";
+import type * as types from "../types.js";
 
 import type {
   ApiFromModules,
@@ -36,9 +38,11 @@ const fullApi: ApiFromModules<{
   config: typeof config;
   crons: typeof crons;
   lib: typeof lib;
-  ops: typeof ops;
+  "ops/basics": typeof ops_basics;
+  "ops/transact": typeof ops_transact;
+  "ops/types": typeof ops_types;
   transfer: typeof transfer;
-  validators: typeof validators;
+  types: typeof types;
 }> = anyApi as any;
 
 /**

@@ -117,3 +117,72 @@ export const opValidator = v.union(
 
 /** TypeScript type for a transact operation. */
 export type Op = Infer<typeof opValidator>;
+
+// ============================================================================
+// Error Types for ConvexError
+// ============================================================================
+
+/**
+ * Conflict error codes for ConvexFS operations.
+ *
+ * These indicate OCC-style conflicts where the caller's assumed state
+ * doesn't match reality. The appropriate response is to re-read current
+ * state and retry.
+ */
+export type ConflictCode =
+  | "SOURCE_NOT_FOUND" // transact: Source file doesn't exist
+  | "SOURCE_CHANGED" // transact: Source blobId doesn't match expected
+  | "DEST_EXISTS" // transact: Dest exists when basis: null (must not exist)
+  | "DEST_NOT_FOUND" // transact: Dest doesn't exist when basis: string
+  | "DEST_CHANGED" // transact: Dest blobId doesn't match basis
+  | "CAS_CONFLICT"; // commitFiles: File basis check failed
+
+/**
+ * Conflict error data - thrown via ConvexError when an OCC-style
+ * conflict occurs. Callers should re-read current state and retry.
+ *
+ * @example
+ * ```typescript
+ * import { ConvexError } from "convex/values";
+ * import { isConflictError } from "convex-fs";
+ *
+ * try {
+ *   await fs.commitFiles(ctx, [{ path, blobId, basis: expectedBlobId }]);
+ * } catch (e) {
+ *   if (e instanceof ConvexError && isConflictError(e.data)) {
+ *     // Re-read current state and retry
+ *     const current = await fs.stat(ctx, path);
+ *     // ... retry logic
+ *   }
+ *   throw e;
+ * }
+ * ```
+ */
+export type ConflictErrorData = {
+  type: "conflict";
+  code: ConflictCode;
+  message: string;
+  path: string;
+  expected?: string | null; // Expected blobId (null = must not exist)
+  found?: string | null; // Actual blobId (null = not found)
+  operationIndex?: number; // For transact: which op failed (1-indexed)
+};
+
+/**
+ * Type guard to check if ConvexError data is a conflict error.
+ *
+ * @example
+ * ```typescript
+ * if (e instanceof ConvexError && isConflictError(e.data)) {
+ *   console.log(`Conflict at ${e.data.path}: ${e.data.code}`);
+ * }
+ * ```
+ */
+export function isConflictError(data: unknown): data is ConflictErrorData {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "type" in data &&
+    (data as ConflictErrorData).type === "conflict"
+  );
+}

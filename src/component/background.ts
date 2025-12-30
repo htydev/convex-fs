@@ -18,9 +18,6 @@ import { createBlobStore } from "./blobstore/index.js";
 // Constants
 // =============================================================================
 
-/** Grace period after URL expiry before upload cleanup (1 hour) */
-const UPLOAD_GRACE_PERIOD_MS = 60 * 60 * 1000;
-
 /** Default grace period before orphaned blobs are deleted (24 hours in seconds) */
 const DEFAULT_BLOB_GRACE_PERIOD_S = 24 * 60 * 60;
 
@@ -107,8 +104,8 @@ export const gcExpiredUploads = internalAction({
       return null;
     }
 
-    // 2. Find expired uploads (expired + grace period)
-    const threshold = Date.now() - UPLOAD_GRACE_PERIOD_MS;
+    // 2. Find expired uploads
+    const threshold = Date.now();
     const expired = await ctx.runQuery(internal.background.findExpiredUploads, {
       threshold,
       limit: GC_BATCH_SIZE,

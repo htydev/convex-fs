@@ -6,7 +6,7 @@ import {
 } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
 import { createBlobStore, MAX_FILE_SIZE_BYTES } from "./blobstore/index.js";
-import { configValidator } from "./validators.js";
+import { configValidator } from "./types.js";
 
 const DEFAULT_DOWNLOAD_URL_TTL = 3600; // 1 hour
 const DEFAULT_UPLOAD_COMMIT_TTL = 14400; // 4 hours - time for client to commit after upload

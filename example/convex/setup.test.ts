@@ -2,7 +2,7 @@
 import { test } from "vitest";
 import { convexTest } from "convex-test";
 import schema from "./schema.js";
-import component from "@convex/fs/test";
+import component from "convex-fs/test";
 
 const modules = import.meta.glob("./**/*.*s");
 

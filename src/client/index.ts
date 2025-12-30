@@ -4,7 +4,7 @@
  * @example
  * ```typescript
  * // convex/fs.ts
- * import { ConvexFS } from "@convex/fs";
+ * import { ConvexFS } from "convex-fs";
  * import { components } from "./_generated/api";
  *
  * export const fs = new ConvexFS(components.fs, {
@@ -44,15 +44,14 @@ import type {
   ConvexFSOptions,
   HttpRouter,
 } from "./types.js";
-import type { FileMetadata } from "../component/validators.js";
+import type { FileMetadata } from "../component/types.js";
 
 // Re-export types for consumers
-export type {
-  Config,
-  FileMetadata,
-  Op,
-  Dest,
-} from "../component/validators.js";
+export type { Config, FileMetadata, Op, Dest } from "../component/types.js";
+
+// Re-export error types and type guards
+export type { ConflictErrorData, ConflictCode } from "../component/types.js";
+export { isConflictError } from "../component/types.js";
 
 export type {
   QueryCtx,
@@ -224,6 +223,70 @@ export class ConvexFS {
     });
   }
 
+  /**
+   * Write raw bytes to blob storage.
+   *
+   * This uploads data to blob storage and creates a pending upload record.
+   * The returned blobId can be committed to a file path using `commitFiles()`.
+   *
+   * @param data - The raw bytes to upload
+   * @param contentType - MIME type of the data
+   * @returns The blobId for the uploaded blob
+   *
+   * @example
+   * ```typescript
+   * // Upload processed data to storage
+   * const blobId = await fs.writeBlob(ctx, processedData, "image/webp");
+   *
+   * // Later, commit to a path
+   * await fs.commitFiles(ctx, [{ path: "/output.webp", blobId }]);
+   * ```
+   */
+  async writeBlob(
+    ctx: ActionCtx,
+    data: ArrayBuffer,
+    contentType: string,
+  ): Promise<string> {
+    const result = await ctx.runAction(this.component.lib.uploadBlob, {
+      config: this.config,
+      data,
+      contentType,
+    });
+    return result.blobId;
+  }
+
+  /**
+   * Write data directly to a file path.
+   *
+   * This is a convenience method that uploads the blob and commits it
+   * to the given path in one call. Overwrites if the file already exists.
+   *
+   * @param path - The file path to write to
+   * @param data - The raw bytes to write
+   * @param contentType - MIME type of the data
+   *
+   * @example
+   * ```typescript
+   * // Read, process, and write back
+   * const input = await fs.getFile(ctx, "/images/photo.jpg");
+   * const processed = await resizeImage(input.data); // your processing logic
+   * await fs.writeFile(ctx, "/images/photo-thumb.webp", processed, "image/webp");
+   * ```
+   */
+  async writeFile(
+    ctx: ActionCtx,
+    path: string,
+    data: ArrayBuffer,
+    contentType: string,
+  ): Promise<void> {
+    await ctx.runAction(this.component.lib.writeFile, {
+      config: this.config,
+      path,
+      data,
+      contentType,
+    });
+  }
+
   // ============================================================================
   // Queries
   // ============================================================================
@@ -263,7 +326,7 @@ export class ConvexFS {
    * Returns files sorted alphabetically by path, with optional prefix filtering
    * and cursor-based pagination.
    *
-   * This method is compatible with `usePaginatedQuery` from `@convex/fs/react`.
+   * This method is compatible with `usePaginatedQuery` from `convex-fs/react`.
    *
    * @param options.prefix - Optional path prefix filter (e.g., "/uploads/")
    * @param options.paginationOpts - Pagination options (numItems, cursor, endCursor)
@@ -284,7 +347,7 @@ export class ConvexFS {
    * });
    *
    * // React: Use with usePaginatedQuery (in your wrapper query)
-   * // See @convex/fs/react for the usePaginatedQuery hook
+   * // See convex-fs/react for the usePaginatedQuery hook
    * ```
    */
   async list(
@@ -498,7 +561,7 @@ export class ConvexFS {
  * ```typescript
  * // convex/http.ts
  * import { httpRouter } from "convex/server";
- * import { ConvexFS, registerRoutes } from "@convex/fs";
+ * import { ConvexFS, registerRoutes } from "convex-fs";
  * import { components } from "./_generated/api";
  *
  * const http = httpRouter();

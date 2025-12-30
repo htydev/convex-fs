@@ -1,13 +1,42 @@
 /// <reference types="vite/client" />
 import { describe, test, expect } from "vitest";
 import { convexTest } from "convex-test";
+import { ConvexError } from "convex/values";
 import schema from "./schema.js";
 import { api, internal } from "./_generated/api.js";
+import type { ConflictErrorData, ConflictCode } from "./types.js";
+import { isConflictError } from "./types.js";
 
 const modules = import.meta.glob("./**/*.ts");
 
 function initConvexTest() {
   return convexTest(schema, modules);
+}
+
+/**
+ * Helper to assert a promise rejects with a ConvexError containing conflict data.
+ */
+async function expectConflictError(
+  promise: Promise<unknown>,
+  expectedCode: ConflictCode,
+  expectedPath: string,
+): Promise<ConflictErrorData> {
+  try {
+    await promise;
+    expect.fail("Expected promise to reject with ConvexError");
+  } catch (e) {
+    expect(e).toBeInstanceOf(ConvexError);
+    let data = (e as ConvexError<ConflictErrorData>).data;
+    // convex-test serializes ConvexError data as JSON string
+    if (typeof data === "string") {
+      data = JSON.parse(data) as ConflictErrorData;
+    }
+    expect(isConflictError(data)).toBe(true);
+    expect(data.code).toBe(expectedCode);
+    expect(data.path).toBe(expectedPath);
+    return data;
+  }
+  throw new Error("Unreachable");
 }
 
 // Default metadata for test files
@@ -73,7 +102,7 @@ describe("commitFilesInternal", () => {
         });
       });
 
-      await t.mutation(internal.ops.commitFilesInternal, {
+      await t.mutation(internal.ops.transact.commitFilesInternal, {
         files: [
           {
             path: "/new.txt",
@@ -102,7 +131,7 @@ describe("commitFilesInternal", () => {
         await createFile(ctx, "/existing.txt", "old-blob");
       });
 
-      await t.mutation(internal.ops.commitFilesInternal, {
+      await t.mutation(internal.ops.transact.commitFilesInternal, {
         files: [
           {
             path: "/existing.txt",
@@ -132,7 +161,7 @@ describe("commitFilesInternal", () => {
     test("creates new file when path doesn't exist", async () => {
       const t = initConvexTest();
 
-      await t.mutation(internal.ops.commitFilesInternal, {
+      await t.mutation(internal.ops.transact.commitFilesInternal, {
         files: [
           {
             path: "/new.txt",
@@ -157,8 +186,8 @@ describe("commitFilesInternal", () => {
         await createFile(ctx, "/existing.txt", "existing-blob");
       });
 
-      await expect(
-        t.mutation(internal.ops.commitFilesInternal, {
+      const data = await expectConflictError(
+        t.mutation(internal.ops.transact.commitFilesInternal, {
           files: [
             {
               path: "/existing.txt",
@@ -168,9 +197,11 @@ describe("commitFilesInternal", () => {
             },
           ],
         }),
-      ).rejects.toThrow(
-        'CAS conflict for path "/existing.txt": expected basis "null", found "existing-blob"',
+        "CAS_CONFLICT",
+        "/existing.txt",
       );
+      expect(data.expected).toBe(null);
+      expect(data.found).toBe("existing-blob");
     });
   });
 
@@ -182,7 +213,7 @@ describe("commitFilesInternal", () => {
         await createFile(ctx, "/file.txt", "current-blob");
       });
 
-      await t.mutation(internal.ops.commitFilesInternal, {
+      await t.mutation(internal.ops.transact.commitFilesInternal, {
         files: [
           {
             path: "/file.txt",
@@ -206,8 +237,8 @@ describe("commitFilesInternal", () => {
         await createFile(ctx, "/file.txt", "current-blob");
       });
 
-      await expect(
-        t.mutation(internal.ops.commitFilesInternal, {
+      const data = await expectConflictError(
+        t.mutation(internal.ops.transact.commitFilesInternal, {
           files: [
             {
               path: "/file.txt",
@@ -217,16 +248,18 @@ describe("commitFilesInternal", () => {
             },
           ],
         }),
-      ).rejects.toThrow(
-        'CAS conflict for path "/file.txt": expected basis "wrong-blob", found "current-blob"',
+        "CAS_CONFLICT",
+        "/file.txt",
       );
+      expect(data.expected).toBe("wrong-blob");
+      expect(data.found).toBe("current-blob");
     });
 
     test("throws CAS conflict when file doesn't exist but basis expects it", async () => {
       const t = initConvexTest();
 
-      await expect(
-        t.mutation(internal.ops.commitFilesInternal, {
+      const data = await expectConflictError(
+        t.mutation(internal.ops.transact.commitFilesInternal, {
           files: [
             {
               path: "/nonexistent.txt",
@@ -236,9 +269,11 @@ describe("commitFilesInternal", () => {
             },
           ],
         }),
-      ).rejects.toThrow(
-        'CAS conflict for path "/nonexistent.txt": expected basis "expected-blob", found "null"',
+        "CAS_CONFLICT",
+        "/nonexistent.txt",
       );
+      expect(data.expected).toBe("expected-blob");
+      expect(data.found).toBe(null);
     });
   });
 });
@@ -261,8 +296,8 @@ describe("transact source predicates", () => {
   test("throws when source file not found", async () => {
     const t = initConvexTest();
 
-    await expect(
-      t.mutation(api.ops.transact, {
+    const data = await expectConflictError(
+      t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -271,7 +306,11 @@ describe("transact source predicates", () => {
           },
         ],
       }),
-    ).rejects.toThrow('Source file not found: "/nonexistent.txt"');
+      "SOURCE_NOT_FOUND",
+      "/nonexistent.txt",
+    );
+    expect(data.expected).toBe("some-blob");
+    expect(data.found).toBe(null);
   });
 
   test("throws when source blobId has changed", async () => {
@@ -281,8 +320,8 @@ describe("transact source predicates", () => {
       await createFile(ctx, "/file.txt", "current-blob");
     });
 
-    await expect(
-      t.mutation(api.ops.transact, {
+    const data = await expectConflictError(
+      t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -291,9 +330,11 @@ describe("transact source predicates", () => {
           },
         ],
       }),
-    ).rejects.toThrow(
-      'Source file changed: "/file.txt" expected blobId "stale-blob", found "current-blob"',
+      "SOURCE_CHANGED",
+      "/file.txt",
     );
+    expect(data.expected).toBe("stale-blob");
+    expect(data.found).toBe("current-blob");
   });
 
   test("succeeds when source path and blobId match", async () => {
@@ -303,7 +344,7 @@ describe("transact source predicates", () => {
       await createFile(ctx, "/file.txt", "correct-blob");
     });
 
-    await t.mutation(api.ops.transact, {
+    await t.mutation(api.ops.transact.transact, {
       config,
       ops: [
         {
@@ -343,7 +384,7 @@ describe("transact dest predicates", () => {
         await createFile(ctx, "/dest.txt", "dest-blob");
       });
 
-      await t.mutation(api.ops.transact, {
+      await t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -377,7 +418,7 @@ describe("transact dest predicates", () => {
         await createFile(ctx, "/dest.txt", "dest-blob");
       });
 
-      await t.mutation(api.ops.transact, {
+      await t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -416,7 +457,7 @@ describe("transact dest predicates", () => {
         await createFile(ctx, "/source.txt", "source-blob");
       });
 
-      await t.mutation(api.ops.transact, {
+      await t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -444,8 +485,8 @@ describe("transact dest predicates", () => {
         await createFile(ctx, "/dest.txt", "existing-blob");
       });
 
-      await expect(
-        t.mutation(api.ops.transact, {
+      const data = await expectConflictError(
+        t.mutation(api.ops.transact.transact, {
           config,
           ops: [
             {
@@ -455,9 +496,11 @@ describe("transact dest predicates", () => {
             },
           ],
         }),
-      ).rejects.toThrow(
-        'Dest conflict at "/dest.txt": expected no file, found blobId "existing-blob"',
+        "DEST_EXISTS",
+        "/dest.txt",
       );
+      expect(data.expected).toBe(null);
+      expect(data.found).toBe("existing-blob");
     });
 
     test("copy succeeds when dest doesn't exist", async () => {
@@ -467,7 +510,7 @@ describe("transact dest predicates", () => {
         await createFile(ctx, "/source.txt", "source-blob");
       });
 
-      await t.mutation(api.ops.transact, {
+      await t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -499,8 +542,8 @@ describe("transact dest predicates", () => {
         await createFile(ctx, "/dest.txt", "existing-blob");
       });
 
-      await expect(
-        t.mutation(api.ops.transact, {
+      const data = await expectConflictError(
+        t.mutation(api.ops.transact.transact, {
           config,
           ops: [
             {
@@ -510,9 +553,11 @@ describe("transact dest predicates", () => {
             },
           ],
         }),
-      ).rejects.toThrow(
-        'Dest conflict at "/dest.txt": expected no file, found blobId "existing-blob"',
+        "DEST_EXISTS",
+        "/dest.txt",
       );
+      expect(data.expected).toBe(null);
+      expect(data.found).toBe("existing-blob");
     });
   });
 
@@ -525,7 +570,7 @@ describe("transact dest predicates", () => {
         await createFile(ctx, "/dest.txt", "expected-blob");
       });
 
-      await t.mutation(api.ops.transact, {
+      await t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -550,8 +595,8 @@ describe("transact dest predicates", () => {
         await createFile(ctx, "/dest.txt", "actual-blob");
       });
 
-      await expect(
-        t.mutation(api.ops.transact, {
+      const data = await expectConflictError(
+        t.mutation(api.ops.transact.transact, {
           config,
           ops: [
             {
@@ -561,9 +606,11 @@ describe("transact dest predicates", () => {
             },
           ],
         }),
-      ).rejects.toThrow(
-        'Dest conflict at "/dest.txt": expected blobId "wrong-blob", found "actual-blob"',
+        "DEST_CHANGED",
+        "/dest.txt",
       );
+      expect(data.expected).toBe("wrong-blob");
+      expect(data.found).toBe("actual-blob");
     });
 
     test("move throws when dest doesn't exist but basis expects it", async () => {
@@ -573,8 +620,8 @@ describe("transact dest predicates", () => {
         await createFile(ctx, "/source.txt", "source-blob");
       });
 
-      await expect(
-        t.mutation(api.ops.transact, {
+      const data = await expectConflictError(
+        t.mutation(api.ops.transact.transact, {
           config,
           ops: [
             {
@@ -584,9 +631,11 @@ describe("transact dest predicates", () => {
             },
           ],
         }),
-      ).rejects.toThrow(
-        'Dest conflict at "/dest.txt": expected blobId "expected-blob", found null',
+        "DEST_NOT_FOUND",
+        "/dest.txt",
       );
+      expect(data.expected).toBe("expected-blob");
+      expect(data.found).toBe(null);
     });
   });
 });
@@ -613,7 +662,7 @@ describe("transact operations", () => {
         await createFile(ctx, "/file.txt", "blob-1");
       });
 
-      await t.mutation(api.ops.transact, {
+      await t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -640,7 +689,7 @@ describe("transact operations", () => {
         await createFile(ctx, "/file2.txt", "blob-2");
       });
 
-      await t.mutation(api.ops.transact, {
+      await t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           { op: "delete", source: makeSource("/file1.txt", "blob-1") },
@@ -663,7 +712,7 @@ describe("transact operations", () => {
         await createFile(ctx, "/old-path.txt", "blob-1");
       });
 
-      await t.mutation(api.ops.transact, {
+      await t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -695,7 +744,7 @@ describe("transact operations", () => {
         await createFile(ctx, "/source.txt", "blob-1");
       });
 
-      await t.mutation(api.ops.transact, {
+      await t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -727,7 +776,7 @@ describe("transact operations", () => {
       });
 
       // First copy
-      await t.mutation(api.ops.transact, {
+      await t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -739,7 +788,7 @@ describe("transact operations", () => {
       });
 
       // Second copy
-      await t.mutation(api.ops.transact, {
+      await t.mutation(api.ops.transact.transact, {
         config,
         ops: [
           {
@@ -767,8 +816,8 @@ describe("transact operations", () => {
       });
 
       // Transaction with valid and invalid ops should fail entirely
-      await expect(
-        t.mutation(api.ops.transact, {
+      const data = await expectConflictError(
+        t.mutation(api.ops.transact.transact, {
           config,
           ops: [
             // Valid: delete existing file
@@ -777,13 +826,344 @@ describe("transact operations", () => {
             { op: "delete", source: makeSource("/file2.txt", "blob-2") },
           ],
         }),
-      ).rejects.toThrow('Source file not found: "/file2.txt"');
+        "SOURCE_NOT_FOUND",
+        "/file2.txt",
+      );
+      expect(data.operationIndex).toBe(2);
 
       // file1.txt should still exist (transaction rolled back)
       await t.run(async (ctx) => {
         const file = await getFile(ctx, "/file1.txt");
         expect(file).not.toBeNull();
         expect(file!.blobId).toBe("blob-1");
+      });
+    });
+  });
+
+  // ============================================================================
+  // Journal Semantics Tests
+  // Operations are applied in order, allowing chained/dependent operations
+  // ============================================================================
+
+  describe("journal semantics", () => {
+    test("delete then move to same path with basis:null succeeds", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/target.txt", "old-blob");
+        await createFile(ctx, "/source.txt", "new-blob");
+      });
+
+      // Delete /target.txt, then move /source.txt to /target.txt
+      // This would fail with upfront validation since /target.txt exists
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          { op: "delete", source: makeSource("/target.txt", "old-blob") },
+          {
+            op: "move",
+            source: makeSource("/source.txt", "new-blob"),
+            dest: { path: "/target.txt", basis: null },
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        // Source should be gone
+        expect(await getFile(ctx, "/source.txt")).toBeNull();
+
+        // Target should now have new-blob
+        const target = await getFile(ctx, "/target.txt");
+        expect(target).not.toBeNull();
+        expect(target!.blobId).toBe("new-blob");
+
+        // Old blob refCount should be 0
+        const oldBlob = await getBlob(ctx, "old-blob");
+        expect(oldBlob!.refCount).toBe(0);
+      });
+    });
+
+    test("chained moves: A -> B -> C", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/a.txt", "blob-1");
+      });
+
+      // Move /a.txt to /b.txt, then move /b.txt to /c.txt
+      // Second op references path created by first op
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          {
+            op: "move",
+            source: makeSource("/a.txt", "blob-1"),
+            dest: { path: "/b.txt", basis: null },
+          },
+          {
+            op: "move",
+            source: makeSource("/b.txt", "blob-1"),
+            dest: { path: "/c.txt", basis: null },
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        expect(await getFile(ctx, "/a.txt")).toBeNull();
+        expect(await getFile(ctx, "/b.txt")).toBeNull();
+
+        const cFile = await getFile(ctx, "/c.txt");
+        expect(cFile).not.toBeNull();
+        expect(cFile!.blobId).toBe("blob-1");
+      });
+    });
+
+    test("copy creates file that can be used as source in next op", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/original.txt", "blob-1");
+      });
+
+      // Copy /original.txt to /copy.txt, then copy /copy.txt to /copy2.txt
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          {
+            op: "copy",
+            source: makeSource("/original.txt", "blob-1"),
+            dest: { path: "/copy.txt", basis: null },
+          },
+          {
+            op: "copy",
+            source: makeSource("/copy.txt", "blob-1"),
+            dest: { path: "/copy2.txt", basis: null },
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        // All three files should exist
+        expect(await getFile(ctx, "/original.txt")).not.toBeNull();
+        expect(await getFile(ctx, "/copy.txt")).not.toBeNull();
+        expect(await getFile(ctx, "/copy2.txt")).not.toBeNull();
+
+        // Blob refCount should be 3
+        const blob = await getBlob(ctx, "blob-1");
+        expect(blob!.refCount).toBe(3);
+      });
+    });
+
+    test("copy then delete source", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/source.txt", "blob-1");
+      });
+
+      // Copy /source.txt to /backup.txt, then delete /source.txt
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          {
+            op: "copy",
+            source: makeSource("/source.txt", "blob-1"),
+            dest: { path: "/backup.txt", basis: null },
+          },
+          { op: "delete", source: makeSource("/source.txt", "blob-1") },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        // Source should be gone
+        expect(await getFile(ctx, "/source.txt")).toBeNull();
+
+        // Backup should exist
+        const backup = await getFile(ctx, "/backup.txt");
+        expect(backup).not.toBeNull();
+        expect(backup!.blobId).toBe("blob-1");
+
+        // Blob refCount should be 1 (copy added 1, delete removed 1)
+        const blob = await getBlob(ctx, "blob-1");
+        expect(blob!.refCount).toBe(1);
+      });
+    });
+
+    test("swap two files using temp path", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/a.txt", "blob-a");
+        await createFile(ctx, "/b.txt", "blob-b");
+      });
+
+      // Swap /a.txt and /b.txt using /temp.txt as intermediate
+      // 1. Move /a.txt to /temp.txt
+      // 2. Move /b.txt to /a.txt
+      // 3. Move /temp.txt to /b.txt
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          {
+            op: "move",
+            source: makeSource("/a.txt", "blob-a"),
+            dest: { path: "/temp.txt", basis: null },
+          },
+          {
+            op: "move",
+            source: makeSource("/b.txt", "blob-b"),
+            dest: { path: "/a.txt", basis: null },
+          },
+          {
+            op: "move",
+            source: makeSource("/temp.txt", "blob-a"),
+            dest: { path: "/b.txt", basis: null },
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        // /a.txt should now have blob-b
+        const aFile = await getFile(ctx, "/a.txt");
+        expect(aFile!.blobId).toBe("blob-b");
+
+        // /b.txt should now have blob-a
+        const bFile = await getFile(ctx, "/b.txt");
+        expect(bFile!.blobId).toBe("blob-a");
+
+        // /temp.txt should not exist
+        expect(await getFile(ctx, "/temp.txt")).toBeNull();
+      });
+    });
+
+    test("multiple operations on same path in sequence", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/file.txt", "blob-1");
+        await createFile(ctx, "/other.txt", "blob-2");
+      });
+
+      // 1. Delete /file.txt
+      // 2. Move /other.txt to /file.txt
+      // 3. Delete /file.txt again (now with blob-2)
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          { op: "delete", source: makeSource("/file.txt", "blob-1") },
+          {
+            op: "move",
+            source: makeSource("/other.txt", "blob-2"),
+            dest: { path: "/file.txt", basis: null },
+          },
+          { op: "delete", source: makeSource("/file.txt", "blob-2") },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        // Both files should be gone
+        expect(await getFile(ctx, "/file.txt")).toBeNull();
+        expect(await getFile(ctx, "/other.txt")).toBeNull();
+
+        // Both blobs should have refCount 0
+        expect((await getBlob(ctx, "blob-1"))!.refCount).toBe(0);
+        expect((await getBlob(ctx, "blob-2"))!.refCount).toBe(0);
+      });
+    });
+
+    test("later operation failure rolls back earlier operations", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/file1.txt", "blob-1");
+        await createFile(ctx, "/file2.txt", "blob-2");
+        // Note: /file3.txt doesn't exist
+      });
+
+      // Op 1: delete /file1.txt (valid)
+      // Op 2: delete /file2.txt (valid)
+      // Op 3: delete /file3.txt (invalid - doesn't exist)
+      const data = await expectConflictError(
+        t.mutation(api.ops.transact.transact, {
+          config,
+          ops: [
+            { op: "delete", source: makeSource("/file1.txt", "blob-1") },
+            { op: "delete", source: makeSource("/file2.txt", "blob-2") },
+            { op: "delete", source: makeSource("/file3.txt", "blob-3") },
+          ],
+        }),
+        "SOURCE_NOT_FOUND",
+        "/file3.txt",
+      );
+      expect(data.operationIndex).toBe(3);
+
+      // All files should still exist (rolled back)
+      await t.run(async (ctx) => {
+        expect(await getFile(ctx, "/file1.txt")).not.toBeNull();
+        expect(await getFile(ctx, "/file2.txt")).not.toBeNull();
+
+        // RefCounts should be unchanged
+        expect((await getBlob(ctx, "blob-1"))!.refCount).toBe(1);
+        expect((await getBlob(ctx, "blob-2"))!.refCount).toBe(1);
+      });
+    });
+
+    test("error message includes operation number", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/file1.txt", "blob-1");
+      });
+
+      // Op 1 is valid, Op 2 fails
+      const data = await expectConflictError(
+        t.mutation(api.ops.transact.transact, {
+          config,
+          ops: [
+            { op: "delete", source: makeSource("/file1.txt", "blob-1") },
+            { op: "delete", source: makeSource("/nonexistent.txt", "blob-x") },
+          ],
+        }),
+        "SOURCE_NOT_FOUND",
+        "/nonexistent.txt",
+      );
+      expect(data.operationIndex).toBe(2);
+      expect(data.message).toMatch(/Operation 2:/);
+    });
+
+    test("circular rename: A -> B, B -> A", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/a.txt", "blob-a");
+        await createFile(ctx, "/b.txt", "blob-b");
+      });
+
+      // This is tricky: we need to use overwrite semantics (basis: undefined)
+      // 1. Move /a.txt to /b.txt (overwrites /b.txt)
+      // 2. But now we can't move the original /b.txt because it's gone!
+
+      // So circular rename isn't directly possible without a temp file
+      // Let's verify the overwrite case works correctly though
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          {
+            op: "move",
+            source: makeSource("/a.txt", "blob-a"),
+            dest: { path: "/b.txt" }, // basis: undefined = overwrite
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        expect(await getFile(ctx, "/a.txt")).toBeNull();
+
+        const bFile = await getFile(ctx, "/b.txt");
+        expect(bFile!.blobId).toBe("blob-a");
+
+        // Old blob-b should have refCount 0 (was overwritten)
+        expect((await getBlob(ctx, "blob-b"))!.refCount).toBe(0);
       });
     });
   });
@@ -816,7 +1196,7 @@ describe("getBlob", () => {
 
     // For getBlob, we need the blob to exist in storage
     // The test store is ephemeral, so we test the "not found" case
-    const result = await t.action(api.ops.getBlob, {
+    const result = await t.action(api.ops.basics.getBlob, {
       config,
       blobId: "blob-1",
     });
@@ -828,7 +1208,7 @@ describe("getBlob", () => {
   test("returns null for non-existent blob", async () => {
     const t = initConvexTest();
 
-    const result = await t.action(api.ops.getBlob, {
+    const result = await t.action(api.ops.basics.getBlob, {
       config,
       blobId: "nonexistent",
     });
@@ -845,7 +1225,7 @@ describe("getFile", () => {
   test("returns null for non-existent path", async () => {
     const t = initConvexTest();
 
-    const result = await t.action(api.ops.getFile, {
+    const result = await t.action(api.ops.basics.getFile, {
       config,
       path: "/nonexistent.txt",
     });
@@ -865,12 +1245,311 @@ describe("getFile", () => {
     });
 
     // File record exists but blob is not in test storage (ephemeral)
-    const result = await t.action(api.ops.getFile, {
+    const result = await t.action(api.ops.basics.getFile, {
       config,
       path: "/orphan.txt",
     });
 
     // Should return null since blob isn't in storage
     expect(result).toBeNull();
+  });
+});
+
+// ============================================================================
+// writeBlob Tests
+// ============================================================================
+
+describe("writeBlob", () => {
+  const config = {
+    storage: { type: "test" as const },
+  };
+
+  test("uploads data and returns a blobId", async () => {
+    const t = initConvexTest();
+
+    const testData = new TextEncoder().encode("hello world");
+    const result = await t.action(api.transfer.uploadBlob, {
+      config,
+      data: testData.buffer as ArrayBuffer,
+      contentType: "text/plain",
+    });
+
+    expect(result).toHaveProperty("blobId");
+    expect(typeof result.blobId).toBe("string");
+    expect(result.blobId.length).toBeGreaterThan(0);
+  });
+
+  test("creates upload record with correct metadata", async () => {
+    const t = initConvexTest();
+
+    const testData = new TextEncoder().encode("test content");
+    const result = await t.action(api.transfer.uploadBlob, {
+      config,
+      data: testData.buffer as ArrayBuffer,
+      contentType: "application/json",
+    });
+
+    // Verify upload record was created with correct metadata
+    const upload = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("uploads")
+        .withIndex("blobId", (q: any) => q.eq("blobId", result.blobId))
+        .unique();
+    });
+
+    expect(upload).not.toBeNull();
+    expect(upload!.blobId).toBe(result.blobId);
+    expect(upload!.contentType).toBe("application/json");
+    expect(upload!.size).toBe(testData.byteLength);
+  });
+
+  test("generates unique blobIds for each upload", async () => {
+    const t = initConvexTest();
+
+    const testData = new TextEncoder().encode("same content");
+    const result1 = await t.action(api.transfer.uploadBlob, {
+      config,
+      data: testData.buffer as ArrayBuffer,
+      contentType: "text/plain",
+    });
+
+    const result2 = await t.action(api.transfer.uploadBlob, {
+      config,
+      data: testData.buffer as ArrayBuffer,
+      contentType: "text/plain",
+    });
+
+    expect(result1.blobId).not.toBe(result2.blobId);
+  });
+
+  test("rejects files exceeding size limit", async () => {
+    const t = initConvexTest();
+
+    // Create data larger than 15MB limit
+    const largeData = new Uint8Array(16 * 1024 * 1024); // 16MB
+
+    await expect(
+      t.action(api.transfer.uploadBlob, {
+        config,
+        data: largeData.buffer as ArrayBuffer,
+        contentType: "application/octet-stream",
+      }),
+    ).rejects.toThrow(/too large/i);
+  });
+});
+
+// ============================================================================
+// writeFile Tests
+// ============================================================================
+
+describe("writeFile", () => {
+  const config = {
+    storage: { type: "test" as const },
+  };
+
+  test("writes data to a new file path", async () => {
+    const t = initConvexTest();
+
+    const testData = new TextEncoder().encode("hello world");
+    const result = await t.action(api.ops.basics.writeFile, {
+      config,
+      path: "/test/newfile.txt",
+      data: testData.buffer as ArrayBuffer,
+      contentType: "text/plain",
+    });
+
+    // writeFile returns null (void)
+    expect(result).toBeNull();
+
+    // Verify file was created
+    const file = await t.run(async (ctx) => {
+      return await getFile(ctx, "/test/newfile.txt");
+    });
+    expect(file).not.toBeNull();
+    expect(file!.path).toBe("/test/newfile.txt");
+
+    // Verify blob was created with correct metadata
+    const blob = await t.run(async (ctx) => {
+      return await getBlob(ctx, file!.blobId);
+    });
+    expect(blob).not.toBeNull();
+    expect(blob!.metadata.contentType).toBe("text/plain");
+    expect(blob!.metadata.size).toBe(testData.byteLength);
+    expect(blob!.refCount).toBe(1);
+  });
+
+  test("overwrites existing file at same path", async () => {
+    const t = initConvexTest();
+
+    // Write initial file
+    const initialData = new TextEncoder().encode("initial content");
+    await t.action(api.ops.basics.writeFile, {
+      config,
+      path: "/overwrite.txt",
+      data: initialData.buffer as ArrayBuffer,
+      contentType: "text/plain",
+    });
+
+    // Get the initial blob ID
+    const initialFile = await t.run(async (ctx) => {
+      return await getFile(ctx, "/overwrite.txt");
+    });
+    const initialBlobId = initialFile!.blobId;
+
+    // Overwrite with new content
+    const newData = new TextEncoder().encode("new content that is longer");
+    await t.action(api.ops.basics.writeFile, {
+      config,
+      path: "/overwrite.txt",
+      data: newData.buffer as ArrayBuffer,
+      contentType: "application/octet-stream",
+    });
+
+    // Verify file now points to new blob
+    const updatedFile = await t.run(async (ctx) => {
+      return await getFile(ctx, "/overwrite.txt");
+    });
+    expect(updatedFile!.blobId).not.toBe(initialBlobId);
+
+    // Verify new blob has correct metadata
+    const newBlob = await t.run(async (ctx) => {
+      return await getBlob(ctx, updatedFile!.blobId);
+    });
+    expect(newBlob!.metadata.contentType).toBe("application/octet-stream");
+    expect(newBlob!.metadata.size).toBe(newData.byteLength);
+    expect(newBlob!.refCount).toBe(1);
+
+    // Verify old blob's refCount was decremented (ready for GC)
+    const oldBlob = await t.run(async (ctx) => {
+      return await getBlob(ctx, initialBlobId);
+    });
+    expect(oldBlob!.refCount).toBe(0);
+  });
+
+  test("cleans up upload record after commit", async () => {
+    const t = initConvexTest();
+
+    const testData = new TextEncoder().encode("test");
+    await t.action(api.ops.basics.writeFile, {
+      config,
+      path: "/cleanup-test.txt",
+      data: testData.buffer as ArrayBuffer,
+      contentType: "text/plain",
+    });
+
+    // Get the file to find the blobId
+    const file = await t.run(async (ctx) => {
+      return await getFile(ctx, "/cleanup-test.txt");
+    });
+
+    // Verify upload record was deleted (cleaned up after commit)
+    const upload = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("uploads")
+        .withIndex("blobId", (q: any) => q.eq("blobId", file!.blobId))
+        .unique();
+    });
+    expect(upload).toBeNull();
+  });
+
+  test("handles different content types correctly", async () => {
+    const t = initConvexTest();
+
+    const contentTypes = [
+      "image/png",
+      "image/jpeg",
+      "application/pdf",
+      "application/json",
+      "text/html",
+    ];
+
+    for (const contentType of contentTypes) {
+      const testData = new TextEncoder().encode(`content for ${contentType}`);
+      const path = `/content-type-test/${contentType.replace("/", "-")}.bin`;
+
+      await t.action(api.ops.basics.writeFile, {
+        config,
+        path,
+        data: testData.buffer as ArrayBuffer,
+        contentType,
+      });
+
+      const file = await t.run(async (ctx) => {
+        return await getFile(ctx, path);
+      });
+      const blob = await t.run(async (ctx) => {
+        return await getBlob(ctx, file!.blobId);
+      });
+
+      expect(blob!.metadata.contentType).toBe(contentType);
+    }
+  });
+
+  test("rejects files exceeding size limit", async () => {
+    const t = initConvexTest();
+
+    // Create data larger than 15MB limit
+    const largeData = new Uint8Array(16 * 1024 * 1024); // 16MB
+
+    await expect(
+      t.action(api.ops.basics.writeFile, {
+        config,
+        path: "/large-file.bin",
+        data: largeData.buffer as ArrayBuffer,
+        contentType: "application/octet-stream",
+      }),
+    ).rejects.toThrow(/too large/i);
+
+    // Verify no file was created
+    const file = await t.run(async (ctx) => {
+      return await getFile(ctx, "/large-file.bin");
+    });
+    expect(file).toBeNull();
+  });
+
+  test("handles empty file content", async () => {
+    const t = initConvexTest();
+
+    const emptyData = new Uint8Array(0);
+    await t.action(api.ops.basics.writeFile, {
+      config,
+      path: "/empty.txt",
+      data: emptyData.buffer as ArrayBuffer,
+      contentType: "text/plain",
+    });
+
+    const file = await t.run(async (ctx) => {
+      return await getFile(ctx, "/empty.txt");
+    });
+    expect(file).not.toBeNull();
+
+    const blob = await t.run(async (ctx) => {
+      return await getBlob(ctx, file!.blobId);
+    });
+    expect(blob!.metadata.size).toBe(0);
+  });
+});
+
+// ============================================================================
+// clearAllFiles Tests
+// ============================================================================
+
+describe("clearAllFiles", () => {
+  test("throws by default when allowClearAllFiles is not set", async () => {
+    const t = initConvexTest();
+
+    // Store config without allowClearAllFiles flag
+    await t.run(async (ctx) => {
+      await ctx.db.insert("config", {
+        key: "storage",
+        value: {
+          storage: { type: "test" as const },
+        },
+      });
+    });
+
+    await expect(
+      t.action(internal.ops.basics.clearAllFiles, {}),
+    ).rejects.toThrow(/clearAllFiles is disabled/);
   });
 });

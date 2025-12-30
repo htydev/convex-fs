@@ -6,15 +6,16 @@
 // Public API from ops
 export {
   stat,
-  commitFiles,
-  transact,
   list,
   copyByPath,
   moveByPath,
   deleteByPath,
   getBlob,
   getFile,
-} from "./ops.js";
+  writeFile,
+} from "./ops/basics.js";
+
+export { commitFiles, transact } from "./ops/transact.js";
 
 // Public API from transfer
 export { getDownloadUrl, uploadBlob } from "./transfer.js";
@@ -25,6 +26,6 @@ export {
   fileMetadataValidator,
   destValidator,
   opValidator,
-} from "./validators.js";
+} from "./types.js";
 
-export type { Config, FileMetadata, Dest, Op } from "./validators.js";
+export type { Config, FileMetadata, Dest, Op } from "./types.js";
