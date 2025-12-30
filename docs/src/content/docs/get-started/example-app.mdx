@@ -1,0 +1,66 @@
+---
+title: 3. Getting the example app running
+description: Getting the example app running
+---
+import { VideoPlayer } from "starlight-videos/components";
+
+## Example
+
+The best way to test your bunny.net integration is ready and to learn how to
+integrate ConvexFS into your own app is by getting the example app running
+first.
+
+## Clone the repo
+
+If you haven't already, clone the `convex-fs` repo:
+
+```bash
+$ git clone https://github.com/jamwt/convex-fs
+```
+
+## Get the app install and running
+
+Launch the app in the normal Convex way:
+
+```bash
+$ npm i
+$ npm run dev
+```
+
+The `run dev` command will run both the frontend, and the `npx convex dev`
+command in the background.
+
+This command will make sure you're logged in, help you set up a new Convex
+project, etc.
+
+## Set the bunny.net environment variables.
+
+Your app is running, but it doesn't work—yet! We need to introduce those
+variables and keys from [the bunny.net setup](/get-started/setup-bunny) into our
+Convex backend.
+
+If your Convex project dashboard isn't already loaded, you can pop it up at any
+time from the CLI in your project root:
+
+```bash
+$ npx convex dashboard
+```
+
+Then, click **Settings** in the left nav, and choose **Environment Variables**.
+Finally, set those four variables from the CDN setup using the management UI:
+
+![dashboard env vars](./bunny-convex-dashboard.png)
+
+## Try the app!
+
+Navigate to [http://localhost:5173](http://localhost:5173) and drag and drop
+some images! You should see them upload and then populate into your file view.
+You can try renaming, copying, and deleting your image files.
+
+It should look a little like this:
+
+<VideoPlayer link="https://www.youtube.com/watch?v=LK6EONQjhP0" />
+
+## What's next?
+
+Dive deeper into how to use ConvexFS [in your own app](/guides/app-setup).

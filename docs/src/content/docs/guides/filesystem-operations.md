@@ -1,0 +1,6 @@
+---
+title: Filesystem operations
+description: How to list, move, copy, and delete files in ConvexFS.
+---
+
+Coming soon.
