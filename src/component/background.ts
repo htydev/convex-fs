@@ -1,5 +1,5 @@
 /**
- * Background jobs for the blob store component.
+ * Background jobs for the file storage component.
  *
  * - UGC: GC for expired/abandoned uploads (runs at :00)
  * - BGC: GC for orphaned blobs with refCount=0 (runs at :20)

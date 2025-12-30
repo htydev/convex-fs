@@ -1,5 +1,5 @@
 /**
- * Main entry point for the blob store component.
+ * Main entry point for the file storage component.
  * Re-exports all public API.
  */
 

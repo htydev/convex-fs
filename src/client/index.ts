@@ -1,5 +1,5 @@
 /**
- * Client API for the ConvexFS blob store component.
+ * Client API for the ConvexFS file storage component.
  *
  * @example
  * ```typescript
@@ -65,7 +65,7 @@ export type {
 export type FSComponent = ComponentApi;
 
 /**
- * ConvexFS client for interacting with the blob store component.
+ * ConvexFS client for interacting with the file storage component.
  *
  * Configuration requires a `storage` option specifying the Bunny.net backend:
  *

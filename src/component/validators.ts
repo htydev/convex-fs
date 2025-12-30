@@ -25,7 +25,7 @@ export const storageConfigValidator = bunnyStorageConfigValidator;
 export type StorageConfig = Infer<typeof storageConfigValidator>;
 
 /**
- * Validator for full blob store configuration.
+ * Validator for full storage configuration.
  * Pass this as an argument to component queries/mutations/actions.
  */
 export const configValidator = v.object({
