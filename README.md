@@ -5,6 +5,14 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/convex-fs"><img src="https://img.shields.io/npm/v/convex-fs.svg" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/convex-fs"><img src="https://img.shields.io/npm/dw/convex-fs.svg" alt="npm downloads" /></a>
+  <a href="https://github.com/jamwt/convex-fs/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/convex-fs.svg" alt="license" /></a>
+  <a href="https://github.com/jamwt/convex-fs/actions/workflows/test.yml"><img src="https://github.com/jamwt/convex-fs/actions/workflows/test.yml/badge.svg" alt="build status" /></a>
+  <a href="https://convexfs.dev"><img src="https://img.shields.io/badge/docs-convexfs.dev-blue.svg" alt="docs" /></a>
+</p>
+
+<p align="center">
   <strong>Virtual filesystem for Convex, backed by Bunny.net Edge Storage & CDN</strong>
 </p>
 
