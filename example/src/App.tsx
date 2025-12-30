@@ -65,7 +65,10 @@ function App() {
   } = usePaginatedQuery(api.files.listImages, {}, { initialNumItems: 24 });
 
   // Get site URL for uploads and image URLs
-  const siteUrl = import.meta.env.VITE_CONVEX_SITE_URL ?? "";
+  const envUrl = import.meta.env.VITE_CONVEX_URL ?? "";
+  const siteUrl = envUrl.endsWith(".cloud")
+    ? envUrl.replace(/\.cloud$/, ".site")
+    : envUrl;
 
   // Add a toast message
   const addToast = useCallback(
