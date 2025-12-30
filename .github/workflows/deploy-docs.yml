@@ -1,0 +1,41 @@
+name: 🚀 Deploy Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+  workflow_dispatch:
+
+jobs:
+  deploy-docs:
+    name: 🎉 Build and Deploy Docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚚 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          cache: "npm"
+          cache-dependency-path: docs/package-lock.json
+
+      - name: 📥 Install dependencies
+        working-directory: docs
+        run: npm ci
+
+      - name: 🔨 Build docs
+        working-directory: docs
+        run: npm run build
+
+      - name: 📂 Deploy to FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
+        with:
+          server: storage.bunnycdn.com
+          username: convexfs-docs
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./docs/dist/
+          server-dir: /
