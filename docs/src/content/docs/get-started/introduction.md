@@ -3,25 +3,15 @@ title: 1. Introduction
 description: The basics of ConvexFS
 ---
 
-ConvexFS provides a way to upload, manage, and serve files in Convex projects.
-It offers an path-based listing of files inside a namespace together, similar to
-services like S3. It provides APIs that allow you system to copy, move, or
-delete files within your file system.
+ConvexFS is a Convex component for uploading, managing, and serving files. It
+provides path-based file organization—similar to S3—with APIs to copy, move, and
+delete files.
 
-The ConvexFS component uses Convex tables to store basic information about your
-file paths and the **blobs** they refer to. Blobs are byte arrays of file
-data—your file's contents—as well as some basic metadata, like the original mime
-type of the content and the total byte count.
-
-The component stores these blob bodies are using [bunny.net](https://bunny.net)'s
-Edge Storage service. Later, when your app loads the file bodies, it uses
-Bunny CDN–the global content delivery network that's tightly integrated
-with Bunny Storage.
-
-The CDN URLs are authorized by your application and leverage Bunny
-CDN's
-[token authentication](https://docs.bunny.net/docs/cdn-token-authentication) in
-order to provide secure, specific access to any file.
+File metadata (paths, content types, sizes) lives in Convex tables, while file
+contents (**blobs**) are stored in [bunny.net](https://bunny.net) Edge Storage.
+When your app serves files, it uses Bunny's global CDN with
+[token authentication](https://docs.bunny.net/docs/cdn-token-authentication) for
+secure, authorized access.
 
 Here's the general layout of how Convex and bunny.net share responsibilities:
 
