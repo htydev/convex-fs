@@ -66,8 +66,7 @@
   },
   "dependencies": {
     "convex-helpers": "^0.1.108",
-    "fast-json-stable-stringify": "^2.1.0",
-    "lucide-react": "^0.562.0"
+    "fast-json-stable-stringify": "^2.1.0"
   },
   "peerDependencies": {
     "convex": "^1.29.3",
@@ -91,6 +90,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "lucide-react": "^0.562.0",
     "npm-run-all2": "8.0.4",
     "path-exists-cli": "2.0.0",
     "pkg-pr-new": "^0.0.60",
