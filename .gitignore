@@ -2,6 +2,7 @@
 .idea
 *.local
 *.log
+*.swp
 /.vscode/
 /docs/.vitepress/cache
 dist

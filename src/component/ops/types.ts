@@ -13,11 +13,3 @@ export const fileCommitValidator = v.object({
   blobId: v.string(),
   basis: v.optional(v.union(v.null(), v.string())),
 });
-
-/**
- * Internal validator for blob metadata passed to commitFilesInternal.
- */
-export const blobMetadataValidator = v.object({
-  contentType: v.string(),
-  size: v.number(),
-});
