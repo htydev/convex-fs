@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { usePaginatedQuery } from "convex-helpers/react";
 import { buildDownloadUrl } from "convex-fs";
 import { api } from "../convex/_generated/api";
@@ -12,6 +12,7 @@ import {
   Image,
   CheckCircle,
   AlertCircle,
+  Bomb,
 } from "lucide-react";
 import "./App.css";
 
@@ -45,6 +46,60 @@ type DeleteModalState = {
   image: { path: string; blobId: string };
 } | null;
 
+type ExpireModalState = {
+  image: { path: string; blobId: string };
+  seconds: string;
+} | null;
+
+/**
+ * Component that tracks expiration status and displays either:
+ * - A countdown when time remaining
+ * - An expired indicator when time has passed
+ *
+ * Updates every second using the local clock.
+ */
+function ExpirationStatus({
+  expiresAt,
+  children,
+}: {
+  expiresAt: number;
+  children: (status: {
+    isExpired: boolean;
+    countdown: React.ReactNode;
+  }) => React.ReactNode;
+}) {
+  const [remaining, setRemaining] = useState(() =>
+    Math.floor((expiresAt - Date.now()) / 1000),
+  );
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const newRemaining = Math.floor((expiresAt - Date.now()) / 1000);
+      setRemaining(newRemaining);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  const isExpired = remaining <= 0;
+
+  let countdown: React.ReactNode = null;
+  if (!isExpired) {
+    const minutes = Math.floor(remaining / 60);
+    const seconds = remaining % 60;
+    const isUrgent = remaining < 30;
+    const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+
+    countdown = (
+      <span className={`expiration-countdown ${isUrgent ? "urgent" : ""}`}>
+        {timeStr}
+      </span>
+    );
+  }
+
+  return <>{children({ isExpired, countdown })}</>;
+}
+
 function App() {
   const [uploading, setUploading] = useState<UploadingFile[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -55,12 +110,16 @@ function App() {
   const [isCopying, setIsCopying] = useState(false);
   const [deleteModal, setDeleteModal] = useState<DeleteModalState>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [expireModal, setExpireModal] = useState<ExpireModalState>(null);
+  const [isSettingExpiration, setIsSettingExpiration] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const commitImage = useMutation(api.files.commitImage);
   const moveFile = useMutation(api.files.moveFile);
   const copyFile = useMutation(api.files.copyFile);
   const deleteFile = useMutation(api.files.deleteFile);
+  const setExpiration = useMutation(api.files.setExpiration);
+  const theTime = useQuery(api.files.theTime);
 
   const {
     results: images,
@@ -165,6 +224,33 @@ function App() {
     }
   }, [deleteModal, deleteFile, addToast]);
 
+  // Handle set expiration
+  const handleSetExpiration = useCallback(async () => {
+    if (!expireModal) return;
+
+    const seconds = parseInt(expireModal.seconds, 10);
+    if (isNaN(seconds) || seconds < 5 || seconds > 3600) {
+      addToast("Expiration must be between 5 and 3600 seconds");
+      return;
+    }
+
+    setIsSettingExpiration(true);
+    try {
+      await setExpiration({
+        path: expireModal.image.path,
+        expiresInSeconds: seconds,
+      });
+      addToast(`File will expire in ${seconds} seconds`, "success");
+      setExpireModal(null);
+    } catch (error) {
+      addToast(
+        error instanceof Error ? error.message : "Failed to set expiration",
+      );
+    } finally {
+      setIsSettingExpiration(false);
+    }
+  }, [expireModal, setExpiration, addToast]);
+
   // Close modal on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -177,10 +263,22 @@ function App() {
       if (e.key === "Escape" && deleteModal && !isDeleting) {
         setDeleteModal(null);
       }
+      if (e.key === "Escape" && expireModal && !isSettingExpiration) {
+        setExpireModal(null);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [moveModal, isMoving, copyModal, isCopying, deleteModal, isDeleting]);
+  }, [
+    moveModal,
+    isMoving,
+    copyModal,
+    isCopying,
+    deleteModal,
+    isDeleting,
+    expireModal,
+    isSettingExpiration,
+  ]);
 
   // Handle file upload
   const uploadFiles = useCallback(
@@ -320,6 +418,10 @@ function App() {
   return (
     <div className="app">
       <h1>Convex FS - Photo Gallery</h1>
+      <h3>
+        The time is{" "}
+        {theTime ? new Date(theTime).toLocaleString() : "loading..."}
+      </h3>
 
       {/* Drop Zone */}
       <div
@@ -372,50 +474,98 @@ function App() {
       ) : (
         <>
           <div className="photo-grid">
-            {images.map((image) => (
-              <div key={image.path} className="photo-grid-item">
-                <img
-                  src={buildDownloadUrl(
-                    siteUrl,
-                    FS_PREFIX,
-                    image.blobId,
-                    image.path,
-                  )}
-                  alt={image.path}
-                  loading="lazy"
-                />
-                <div className="photo-grid-item-info">
-                  <span className="photo-grid-item-filename">{image.path}</span>
-                  <div className="photo-grid-item-actions">
-                    <button
-                      className="action-btn"
-                      title="Move"
-                      onClick={() =>
-                        setMoveModal({ image, newPath: image.path })
-                      }
-                    >
-                      <FolderInput size={14} />
-                    </button>
-                    <button
-                      className="action-btn"
-                      title="Copy"
-                      onClick={() =>
-                        setCopyModal({ image, newPath: image.path })
-                      }
-                    >
-                      <Copy size={14} />
-                    </button>
-                    <button
-                      className="action-btn action-btn-danger"
-                      title="Delete"
-                      onClick={() => setDeleteModal({ image })}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+            {images.map((image) => {
+              const expiresAt = image.attributes?.expiresAt;
+
+              const renderItem = (expiredStatus?: {
+                isExpired: boolean;
+                countdown: React.ReactNode;
+              }) => {
+                const isExpired = expiredStatus?.isExpired ?? false;
+                const countdown = expiredStatus?.countdown ?? null;
+
+                return (
+                  <div
+                    key={image.path}
+                    className={`photo-grid-item ${isExpired ? "expired" : ""}`}
+                  >
+                    <div className="photo-grid-item-image-container">
+                      <img
+                        src={buildDownloadUrl(
+                          siteUrl,
+                          FS_PREFIX,
+                          image.blobId,
+                          image.path,
+                        )}
+                        alt={image.path}
+                        loading="lazy"
+                      />
+                      {isExpired && (
+                        <div className="expired-overlay">
+                          <X size={64} strokeWidth={3} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="photo-grid-item-info">
+                      <div className="photo-grid-item-filename-row">
+                        <span className="photo-grid-item-filename">
+                          {image.path}
+                        </span>
+                        {countdown}
+                      </div>
+                      <div className="photo-grid-item-actions">
+                        <button
+                          className="action-btn"
+                          title="Move"
+                          onClick={() =>
+                            setMoveModal({ image, newPath: image.path })
+                          }
+                        >
+                          <FolderInput size={14} />
+                        </button>
+                        <button
+                          className="action-btn"
+                          title="Copy"
+                          onClick={() =>
+                            setCopyModal({ image, newPath: image.path })
+                          }
+                        >
+                          <Copy size={14} />
+                        </button>
+                        <button
+                          className="action-btn action-btn-warning"
+                          title="Set Expiration"
+                          onClick={() =>
+                            setExpireModal({ image, seconds: "60" })
+                          }
+                        >
+                          <Bomb size={14} />
+                        </button>
+                        <button
+                          className="action-btn action-btn-danger"
+                          title="Delete"
+                          onClick={() => setDeleteModal({ image })}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              };
+
+              // If file has expiration, wrap in ExpirationStatus for live updates
+              if (expiresAt !== undefined) {
+                return (
+                  <ExpirationStatus key={image.path} expiresAt={expiresAt}>
+                    {(status) => renderItem(status)}
+                  </ExpirationStatus>
+                );
+              }
+
+              // No expiration - render without wrapper
+              return renderItem();
+            })}
           </div>
 
           {/* Load More Button */}
@@ -581,6 +731,68 @@ function App() {
                 disabled={isDeleting}
               >
                 {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expire Modal */}
+      {expireModal && (
+        <div
+          className="modal-overlay"
+          onClick={() => !isSettingExpiration && setExpireModal(null)}
+        >
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Set Expiration</h2>
+              <button
+                className="modal-close"
+                onClick={() => setExpireModal(null)}
+                disabled={isSettingExpiration}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <label className="modal-label">
+                Expires in (seconds, 5-3600)
+              </label>
+              <input
+                type="number"
+                className="modal-input"
+                value={expireModal.seconds}
+                onChange={(e) =>
+                  setExpireModal({ ...expireModal, seconds: e.target.value })
+                }
+                min={5}
+                max={3600}
+                disabled={isSettingExpiration}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isSettingExpiration) {
+                    handleSetExpiration();
+                  }
+                }}
+              />
+              <p className="modal-hint">
+                The file will be automatically deleted after this time.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setExpireModal(null)}
+                disabled={isSettingExpiration}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-warning"
+                onClick={handleSetExpiration}
+                disabled={isSettingExpiration}
+              >
+                {isSettingExpiration ? "Setting..." : "Set Expiration"}
               </button>
             </div>
           </div>

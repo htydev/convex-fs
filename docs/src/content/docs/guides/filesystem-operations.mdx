@@ -126,12 +126,13 @@ export const getFile = query({
 
 When a file exists, `fs.stat()` returns an object with:
 
-| Field         | Type     | Description                                          |
-| ------------- | -------- | ---------------------------------------------------- |
-| `path`        | `string` | The file's full path                                 |
-| `blobId`      | `string` | Unique identifier for the blob (used for downloads)  |
-| `contentType` | `string` | MIME type (e.g., `"image/png"`, `"application/pdf"`) |
-| `size`        | `number` | File size in bytes                                   |
+| Field         | Type     | Description                                                               |
+| ------------- | -------- | ------------------------------------------------------------------------- |
+| `path`        | `string` | The file's full path                                                      |
+| `blobId`      | `string` | Unique identifier for the blob (used for downloads)                       |
+| `contentType` | `string` | MIME type (e.g., `"image/png"`, `"application/pdf"`)                      |
+| `size`        | `number` | File size in bytes                                                        |
+| `attributes`  | `object` | Optional file attributes (see [File expiration](/guides/file-expiration)) |
 
 ### Checking if a file exists
 

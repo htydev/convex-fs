@@ -82,3 +82,42 @@ export const deleteFile = mutation({
     await fs.delete(ctx, args.path);
   },
 });
+
+/**
+ * Set expiration on a file.
+ * The file will be automatically deleted after the specified number of seconds.
+ */
+export const setExpiration = mutation({
+  args: {
+    path: v.string(),
+    expiresInSeconds: v.number(),
+  },
+  handler: async (ctx, args) => {
+    if (args.expiresInSeconds < 5 || args.expiresInSeconds > 3600) {
+      throw new Error("Expiration must be between 5 and 3600 seconds");
+    }
+
+    const file = await fs.stat(ctx, args.path);
+    if (!file) {
+      throw new Error("File not found");
+    }
+
+    const expiresAt = Date.now() + args.expiresInSeconds * 1000;
+
+    await fs.transact(ctx, [
+      {
+        op: "setAttributes",
+        source: file,
+        attributes: { expiresAt },
+      },
+    ]);
+  },
+});
+
+export const theTime = query({
+  args: {
+  },
+  handler: async () => {
+    return Date.now();
+  },
+});

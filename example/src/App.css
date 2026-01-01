@@ -181,12 +181,37 @@ h1 {
   border-color: transparent;
 }
 
+.photo-grid-item-image-container {
+  position: relative;
+  width: 100%;
+}
+
 .photo-grid-item img {
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
   display: block;
   background: var(--bg-color);
+}
+
+/* Expired file state */
+.photo-grid-item.expired {
+  opacity: 0.5;
+}
+
+.photo-grid-item.expired:hover {
+  transform: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.expired-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--danger);
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .photo-grid-item-info {
@@ -199,6 +224,14 @@ h1 {
   gap: 12px;
 }
 
+.photo-grid-item-filename-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
 .photo-grid-item-filename {
   font-size: 14px;
   color: var(--text-main);
@@ -206,6 +239,20 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Countdown display */
+.expiration-countdown {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-feature-settings: "tnum";
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.expiration-countdown.urgent {
+  color: var(--danger);
+  font-weight: 600;
 }
 
 .photo-grid-item-actions {
@@ -243,6 +290,12 @@ h1 {
   background: #fef2f2;
   color: var(--danger);
   border-color: var(--danger);
+}
+
+.action-btn-warning:hover {
+  background: #fef3c7;
+  color: #d97706;
+  border-color: #d97706;
 }
 
 /* Loading State */
@@ -537,9 +590,26 @@ h1 {
   transform: translateY(-1px);
 }
 
+.modal-btn-warning {
+  background: #d97706;
+  color: white;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.modal-btn-warning:hover:not(:disabled) {
+  background: #b45309;
+  transform: translateY(-1px);
+}
+
 .modal-text {
   margin: 0;
   font-size: 15px;
   color: var(--text-muted);
   line-height: 1.6;
+}
+
+.modal-hint {
+  margin: 12px 0 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
 }

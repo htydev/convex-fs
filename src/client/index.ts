@@ -369,7 +369,7 @@ export class ConvexFS {
   // ============================================================================
 
   /**
-   * Execute atomic file operations (move/copy/delete).
+   * Execute atomic file operations (move/copy/delete/setAttributes).
    *
    * All operations are validated and applied atomically. If any operation
    * fails its preconditions (source doesn't match, dest conflict), the
@@ -379,6 +379,11 @@ export class ConvexFS {
    * - `undefined`: No check - silently overwrite if dest exists
    * - `null`: Dest must not exist (fails if file exists)
    * - `string`: Dest's current blobId must match (CAS update)
+   *
+   * For `setAttributes`, the attributes field uses:
+   * - `undefined`: Keep existing value
+   * - `null`: Clear the attribute
+   * - `value`: Set to new value
    *
    * @param ops - Array of operations to execute
    *
@@ -401,9 +406,14 @@ export class ConvexFS {
    *     { op: "delete", source: file },
    *   ]);
    *
-   *   // Overwrite with CAS: only succeeds if dest matches basis
+   *   // Set expiration on a file
    *   await fs.transact(ctx, [
-   *     { op: "move", source: file, dest: { path: "/target.txt", basis: existingBlobId } },
+   *     { op: "setAttributes", source: file, attributes: { expiresAt: Date.now() + 3600000 } },
+   *   ]);
+   *
+   *   // Clear expiration from a file
+   *   await fs.transact(ctx, [
+   *     { op: "setAttributes", source: file, attributes: { expiresAt: null } },
    *   ]);
    * }
    * ```
@@ -418,6 +428,7 @@ export class ConvexFS {
             blobId: string;
             contentType: string;
             size: number;
+            attributes?: { expiresAt?: number };
           };
           dest: { path: string; basis?: string | null };
         }
@@ -428,6 +439,7 @@ export class ConvexFS {
             blobId: string;
             contentType: string;
             size: number;
+            attributes?: { expiresAt?: number };
           };
           dest: { path: string; basis?: string | null };
         }
@@ -438,7 +450,19 @@ export class ConvexFS {
             blobId: string;
             contentType: string;
             size: number;
+            attributes?: { expiresAt?: number };
           };
+        }
+      | {
+          op: "setAttributes";
+          source: {
+            path: string;
+            blobId: string;
+            contentType: string;
+            size: number;
+            attributes?: { expiresAt?: number };
+          };
+          attributes: { expiresAt?: number | null };
         }
     >,
   ): Promise<void> {
@@ -761,7 +785,12 @@ export function registerRoutes(
  * @param path - The path of the file being downloaded
  * @returns The download URL
  */
-export function buildDownloadUrl(siteUrl: string, prefix: string, blobId: string, path?: string): string {
+export function buildDownloadUrl(
+  siteUrl: string,
+  prefix: string,
+  blobId: string,
+  path?: string,
+): string {
   let url = `${siteUrl}${prefix}/blobs/${blobId}`;
   if (path !== undefined) {
     url += `?path=${encodeURIComponent(path)}`;
@@ -774,7 +803,10 @@ export function buildDownloadUrl(siteUrl: string, prefix: string, blobId: string
  * @param url - The download URL
  * @returns The blob ID and path
  */
-export function parseDownloadUrl(url: string): { blobId: string, path?: string } {
+export function parseDownloadUrl(url: string): {
+  blobId: string;
+  path?: string;
+} {
   const urlObj = new URL(url);
   const blobId = urlObj.pathname.split("/").pop() ?? "";
   const path = urlObj.searchParams.get("path");

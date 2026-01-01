@@ -250,30 +250,29 @@ async function applyOperation(
   if (op.op === "delete") {
     await deleteFileAndDecrefBlob(ctx, sourceFile._id, sourceFile.blobId, now);
   } else if (op.op === "move") {
-    // Handle overwrite at dest (basis: undefined or string means overwrite may happen)
-    // basis: null means dest must not exist (validated above), so no overwrite needed
-    if (op.dest.basis !== null) {
-      const destFile = await ctx.db
-        .query("files")
-        .withIndex("path", (q) => q.eq("path", op.dest.path))
+    // Check for existing file at dest (including expired files) for cleanup.
+    // Note: We query the raw DB here, not getFileByPath, because we need to
+    // clean up any existing record (even expired) to avoid path collision.
+    const destFile = await ctx.db
+      .query("files")
+      .withIndex("path", (q) => q.eq("path", op.dest.path))
+      .unique();
+
+    if (destFile) {
+      // Delete dest file record
+      await ctx.db.delete(destFile._id);
+
+      // Decrement refCount on dest blob
+      const destBlob = await ctx.db
+        .query("blobs")
+        .withIndex("blobId", (q) => q.eq("blobId", destFile.blobId))
         .unique();
 
-      if (destFile) {
-        // Delete dest file record
-        await ctx.db.delete(destFile._id);
-
-        // Decrement refCount on dest blob
-        const destBlob = await ctx.db
-          .query("blobs")
-          .withIndex("blobId", (q) => q.eq("blobId", destFile.blobId))
-          .unique();
-
-        if (destBlob) {
-          await ctx.db.patch(destBlob._id, {
-            refCount: destBlob.refCount - 1,
-            updatedAt: now,
-          });
-        }
+      if (destBlob) {
+        await ctx.db.patch(destBlob._id, {
+          refCount: destBlob.refCount - 1,
+          updatedAt: now,
+        });
       }
     }
 
@@ -297,14 +296,16 @@ async function applyOperation(
       });
     }
 
-    // Check if dest exists (for overwrite handling)
+    // Check for existing file at dest (including expired files) for cleanup.
+    // Note: We query the raw DB here, not getFileByPath, because we need to
+    // clean up any existing record (even expired) to avoid path collision.
     const destFile = await ctx.db
       .query("files")
       .withIndex("path", (q) => q.eq("path", op.dest.path))
       .unique();
 
     if (destFile) {
-      // Dest exists - overwrite (basis: undefined or string, validated above)
+      // Dest exists - overwrite (validated above, or expired file being replaced)
       // Update dest file to point to source blob and clear attributes
       await ctx.db.patch(destFile._id, {
         blobId: sourceFile.blobId,

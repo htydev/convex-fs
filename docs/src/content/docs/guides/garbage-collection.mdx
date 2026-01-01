@@ -31,7 +31,7 @@ This design enables several important features:
 
 ## Garbage collection routines
 
-ConvexFS runs two separate garbage collection jobs on cron schedules:
+ConvexFS runs three separate garbage collection jobs on cron schedules:
 
 ### Upload GC (UGC)
 
@@ -62,6 +62,25 @@ This happens when:
 
 The blob GC respects the configured grace period before deleting (default: 24
 hours). This gives you time to recover from accidental deletions.
+
+### File GC (FGC)
+
+**Runs:** Every 15 seconds
+
+**Purpose:** Deletes files that have passed their `expiresAt` time. See
+[File expiration](/guides/file-expiration) for details on setting expiration.
+
+When a file expires:
+
+1. The file record is deleted
+2. The blob's `refCount` is decremented
+3. The blob enters the normal BGC process (deleted after grace period)
+
+<Aside type="note">
+  FGC does **not** respect the `freezeGc` flag because it doesn't delete blob
+  data from storage—it only removes file records. The underlying data is
+  preserved until BGC runs, giving you time to recover if needed.
+</Aside>
 
 ## Blob grace period
 

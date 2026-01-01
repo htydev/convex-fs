@@ -7,7 +7,7 @@ import starlightVideos from "starlight-videos";
 export default defineConfig({
   integrations: [
     starlight({
-		favicon: "/favicon.ico",
+      favicon: "/favicon.ico",
       plugins: [starlightVideos()],
       title: "ConvexFS",
       logo: {
@@ -49,6 +49,7 @@ export default defineConfig({
             },
             { label: "Authn & authz", slug: "guides/authn-authz" },
             { label: "Garbage collection", slug: "guides/garbage-collection" },
+            { label: "File expiration", slug: "guides/file-expiration" },
             {
               label: "Advanced configuration",
               slug: "guides/advanced-configuration",
