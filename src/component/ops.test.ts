@@ -43,8 +43,13 @@ async function expectConflictError(
 const defaultMetadata = { contentType: "text/plain", size: 100 };
 
 // Helper to create a source object for transact operations
-function makeSource(path: string, blobId: string, metadata = defaultMetadata) {
-  return { path, blobId, ...metadata };
+function makeSource(
+  path: string,
+  blobId: string,
+  metadata = defaultMetadata,
+  attributes?: { expiresAt?: number },
+) {
+  return { path, blobId, ...metadata, attributes };
 }
 
 // Helper to create a file directly in the database (simulating committed state)
@@ -53,6 +58,7 @@ async function createFile(
   path: string,
   blobId: string,
   metadata: { contentType: string; size: number } = defaultMetadata,
+  attributes?: { expiresAt?: number },
 ) {
   const now = Date.now();
   await ctx.db.insert("blobs", {
@@ -64,6 +70,7 @@ async function createFile(
   await ctx.db.insert("files", {
     path,
     blobId,
+    attributes,
   });
 }
 
@@ -1356,5 +1363,459 @@ describe("clearAllFiles", () => {
     await expect(
       t.action(internal.ops.basics.clearAllFiles, {}),
     ).rejects.toThrow(/clearAllFiles is disabled/);
+  });
+});
+
+// ============================================================================
+// File Attributes Tests
+// ============================================================================
+
+describe("file attributes", () => {
+  const config = {
+    storage: {
+      type: "bunny" as const,
+      apiKey: "test",
+      storageZoneName: "test",
+      cdnHostname: "test.b-cdn.net",
+    },
+  };
+
+  describe("commitFiles with attributes", () => {
+    test("creates file with expiresAt attribute", async () => {
+      const t = initConvexTest();
+      const expiresAt = Date.now() + 3600000; // 1 hour from now
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("uploads", {
+          blobId: "blob-1",
+          expiresAt: Date.now() + 3600000,
+          contentType: "text/plain",
+          size: 100,
+        });
+      });
+
+      await t.mutation(api.ops.transact.commitFiles, {
+        config,
+        files: [
+          {
+            path: "/test.txt",
+            blobId: "blob-1",
+            attributes: { expiresAt },
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        const file = await getFile(ctx, "/test.txt");
+        expect(file).not.toBeNull();
+        expect(file!.attributes).toEqual({ expiresAt });
+      });
+    });
+
+    test("creates file without attributes when not specified", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("uploads", {
+          blobId: "blob-1",
+          expiresAt: Date.now() + 3600000,
+          contentType: "text/plain",
+          size: 100,
+        });
+      });
+
+      await t.mutation(api.ops.transact.commitFiles, {
+        config,
+        files: [
+          {
+            path: "/test.txt",
+            blobId: "blob-1",
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        const file = await getFile(ctx, "/test.txt");
+        expect(file).not.toBeNull();
+        expect(file!.attributes).toBeUndefined();
+      });
+    });
+
+    test("overwrite clears attributes when not specified", async () => {
+      const t = initConvexTest();
+      const expiresAt = Date.now() + 3600000;
+
+      // Create existing file with attributes
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/test.txt", "old-blob", defaultMetadata, {
+          expiresAt,
+        });
+        // Create upload for new blob
+        await ctx.db.insert("uploads", {
+          blobId: "new-blob",
+          expiresAt: Date.now() + 3600000,
+          contentType: "text/plain",
+          size: 200,
+        });
+      });
+
+      // Overwrite without specifying attributes
+      await t.mutation(api.ops.transact.commitFiles, {
+        config,
+        files: [
+          {
+            path: "/test.txt",
+            blobId: "new-blob",
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        const file = await getFile(ctx, "/test.txt");
+        expect(file!.blobId).toBe("new-blob");
+        expect(file!.attributes).toBeUndefined();
+      });
+    });
+
+    test("overwrite can set new attributes", async () => {
+      const t = initConvexTest();
+      const oldExpiresAt = Date.now() + 3600000;
+      const newExpiresAt = Date.now() + 7200000;
+
+      // Create existing file with attributes
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/test.txt", "old-blob", defaultMetadata, {
+          expiresAt: oldExpiresAt,
+        });
+        // Create upload for new blob
+        await ctx.db.insert("uploads", {
+          blobId: "new-blob",
+          expiresAt: Date.now() + 3600000,
+          contentType: "text/plain",
+          size: 200,
+        });
+      });
+
+      // Overwrite with new attributes
+      await t.mutation(api.ops.transact.commitFiles, {
+        config,
+        files: [
+          {
+            path: "/test.txt",
+            blobId: "new-blob",
+            attributes: { expiresAt: newExpiresAt },
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        const file = await getFile(ctx, "/test.txt");
+        expect(file!.blobId).toBe("new-blob");
+        expect(file!.attributes).toEqual({ expiresAt: newExpiresAt });
+      });
+    });
+  });
+
+  describe("setAttributes operation", () => {
+    test("sets expiresAt on existing file", async () => {
+      const t = initConvexTest();
+      const expiresAt = Date.now() + 3600000;
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/test.txt", "blob-1");
+      });
+
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          {
+            op: "setAttributes",
+            source: makeSource("/test.txt", "blob-1"),
+            attributes: { expiresAt },
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        const file = await getFile(ctx, "/test.txt");
+        expect(file!.attributes).toEqual({ expiresAt });
+      });
+    });
+
+    test("clears expiresAt with null", async () => {
+      const t = initConvexTest();
+      const expiresAt = Date.now() + 3600000;
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/test.txt", "blob-1", defaultMetadata, {
+          expiresAt,
+        });
+      });
+
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          {
+            op: "setAttributes",
+            source: makeSource("/test.txt", "blob-1", defaultMetadata, {
+              expiresAt,
+            }),
+            attributes: { expiresAt: null },
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        const file = await getFile(ctx, "/test.txt");
+        expect(file!.attributes).toBeUndefined();
+      });
+    });
+
+    test("preserves expiresAt when undefined", async () => {
+      const t = initConvexTest();
+      const expiresAt = Date.now() + 3600000;
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/test.txt", "blob-1", defaultMetadata, {
+          expiresAt,
+        });
+      });
+
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          {
+            op: "setAttributes",
+            source: makeSource("/test.txt", "blob-1", defaultMetadata, {
+              expiresAt,
+            }),
+            attributes: {}, // No expiresAt key - should preserve
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        const file = await getFile(ctx, "/test.txt");
+        expect(file!.attributes).toEqual({ expiresAt });
+      });
+    });
+
+    test("throws SOURCE_NOT_FOUND when file doesn't exist", async () => {
+      const t = initConvexTest();
+
+      await expectConflictError(
+        t.mutation(api.ops.transact.transact, {
+          config,
+          ops: [
+            {
+              op: "setAttributes",
+              source: makeSource("/nonexistent.txt", "blob-1"),
+              attributes: { expiresAt: Date.now() + 3600000 },
+            },
+          ],
+        }),
+        "SOURCE_NOT_FOUND",
+        "/nonexistent.txt",
+      );
+    });
+
+    test("throws SOURCE_CHANGED when blobId doesn't match", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/test.txt", "actual-blob");
+      });
+
+      await expectConflictError(
+        t.mutation(api.ops.transact.transact, {
+          config,
+          ops: [
+            {
+              op: "setAttributes",
+              source: makeSource("/test.txt", "wrong-blob"),
+              attributes: { expiresAt: Date.now() + 3600000 },
+            },
+          ],
+        }),
+        "SOURCE_CHANGED",
+        "/test.txt",
+      );
+    });
+  });
+
+  describe("move clears attributes", () => {
+    test("destination has no attributes after move", async () => {
+      const t = initConvexTest();
+      const expiresAt = Date.now() + 3600000;
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/source.txt", "blob-1", defaultMetadata, {
+          expiresAt,
+        });
+      });
+
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          {
+            op: "move",
+            source: makeSource("/source.txt", "blob-1", defaultMetadata, {
+              expiresAt,
+            }),
+            dest: { path: "/dest.txt", basis: null },
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        expect(await getFile(ctx, "/source.txt")).toBeNull();
+        const destFile = await getFile(ctx, "/dest.txt");
+        expect(destFile).not.toBeNull();
+        expect(destFile!.blobId).toBe("blob-1");
+        expect(destFile!.attributes).toBeUndefined();
+      });
+    });
+  });
+
+  describe("copy clears attributes", () => {
+    test("destination has no attributes after copy", async () => {
+      const t = initConvexTest();
+      const expiresAt = Date.now() + 3600000;
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/source.txt", "blob-1", defaultMetadata, {
+          expiresAt,
+        });
+      });
+
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          {
+            op: "copy",
+            source: makeSource("/source.txt", "blob-1", defaultMetadata, {
+              expiresAt,
+            }),
+            dest: { path: "/dest.txt", basis: null },
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        // Source still has attributes
+        const sourceFile = await getFile(ctx, "/source.txt");
+        expect(sourceFile!.attributes).toEqual({ expiresAt });
+
+        // Dest has no attributes
+        const destFile = await getFile(ctx, "/dest.txt");
+        expect(destFile).not.toBeNull();
+        expect(destFile!.blobId).toBe("blob-1");
+        expect(destFile!.attributes).toBeUndefined();
+      });
+    });
+
+    test("copy overwrite clears dest attributes", async () => {
+      const t = initConvexTest();
+      const sourceExpiresAt = Date.now() + 3600000;
+      const destExpiresAt = Date.now() + 7200000;
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/source.txt", "blob-1", defaultMetadata, {
+          expiresAt: sourceExpiresAt,
+        });
+        await createFile(ctx, "/dest.txt", "blob-2", defaultMetadata, {
+          expiresAt: destExpiresAt,
+        });
+      });
+
+      await t.mutation(api.ops.transact.transact, {
+        config,
+        ops: [
+          {
+            op: "copy",
+            source: makeSource("/source.txt", "blob-1", defaultMetadata, {
+              expiresAt: sourceExpiresAt,
+            }),
+            dest: { path: "/dest.txt", basis: "blob-2" },
+          },
+        ],
+      });
+
+      await t.run(async (ctx) => {
+        const destFile = await getFile(ctx, "/dest.txt");
+        expect(destFile!.blobId).toBe("blob-1");
+        expect(destFile!.attributes).toBeUndefined();
+      });
+    });
+  });
+
+  describe("stat returns attributes", () => {
+    test("includes attributes in response", async () => {
+      const t = initConvexTest();
+      const expiresAt = Date.now() + 3600000;
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/test.txt", "blob-1", defaultMetadata, {
+          expiresAt,
+        });
+      });
+
+      const result = await t.query(api.ops.basics.stat, {
+        config,
+        path: "/test.txt",
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.attributes).toEqual({ expiresAt });
+    });
+
+    test("returns undefined attributes when not set", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/test.txt", "blob-1");
+      });
+
+      const result = await t.query(api.ops.basics.stat, {
+        config,
+        path: "/test.txt",
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.attributes).toBeUndefined();
+    });
+  });
+
+  describe("list returns attributes", () => {
+    test("includes attributes for each file", async () => {
+      const t = initConvexTest();
+      const expiresAt1 = Date.now() + 3600000;
+      const expiresAt2 = Date.now() + 7200000;
+
+      await t.run(async (ctx) => {
+        await createFile(ctx, "/a.txt", "blob-1", defaultMetadata, {
+          expiresAt: expiresAt1,
+        });
+        await createFile(ctx, "/b.txt", "blob-2", defaultMetadata, {
+          expiresAt: expiresAt2,
+        });
+        await createFile(ctx, "/c.txt", "blob-3"); // No attributes
+      });
+
+      const result = await t.query(api.ops.basics.list, {
+        config,
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      expect(result.page).toHaveLength(3);
+
+      const fileA = result.page.find((f: any) => f.path === "/a.txt");
+      const fileB = result.page.find((f: any) => f.path === "/b.txt");
+      const fileC = result.page.find((f: any) => f.path === "/c.txt");
+
+      expect(fileA!.attributes).toEqual({ expiresAt: expiresAt1 });
+      expect(fileB!.attributes).toEqual({ expiresAt: expiresAt2 });
+      expect(fileC!.attributes).toBeUndefined();
+    });
   });
 });

@@ -33,7 +33,16 @@ export default defineSchema({
   files: defineTable({
     blobId: v.string(),
     path: v.string(),
-  }).index("path", ["path"]),
+    // Optional attributes on the file path (not the blob)
+    // Attributes are cleared on move/copy operations
+    attributes: v.optional(
+      v.object({
+        expiresAt: v.optional(v.number()), // Unix timestamp (ms) when file expires
+      }),
+    ),
+  })
+    .index("path", ["path"])
+    .index("expiresAt", ["attributes.expiresAt"]), // For file expiration GC
 
   // Stored config for background jobs (components can't access env vars)
   config: defineTable({

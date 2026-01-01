@@ -17,6 +17,7 @@ import type * as config from "../config.js";
 import type * as crons from "../crons.js";
 import type * as lib from "../lib.js";
 import type * as ops_basics from "../ops/basics.js";
+import type * as ops_helpers from "../ops/helpers.js";
 import type * as ops_transact from "../ops/transact.js";
 import type * as ops_types from "../ops/types.js";
 import type * as transfer from "../transfer.js";
@@ -39,6 +40,7 @@ const fullApi: ApiFromModules<{
   crons: typeof crons;
   lib: typeof lib;
   "ops/basics": typeof ops_basics;
+  "ops/helpers": typeof ops_helpers;
   "ops/transact": typeof ops_transact;
   "ops/types": typeof ops_types;
   transfer: typeof transfer;

@@ -13,6 +13,7 @@ import {
 } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
 import { createBlobStore } from "./blobstore/index.js";
+import { deleteFileAndDecrefBlob } from "./ops/helpers.js";
 
 // =============================================================================
 // Constants
@@ -322,6 +323,114 @@ export const gcOrphanedBlobs = internalAction({
     if (orphaned.length === GC_BATCH_SIZE && errorCount === 0) {
       console.log("[BGC] Batch full, scheduling follow-up run");
       await ctx.scheduler.runAfter(0, internal.background.gcOrphanedBlobs, {});
+    }
+
+    return null;
+  },
+});
+
+// =============================================================================
+// FGC: File Garbage Collection (expired files with expiresAt in past)
+// =============================================================================
+
+/**
+ * Find expired files (attributes.expiresAt < threshold).
+ *
+ * Uses gt(0) to exclude files without expiresAt (undefined values come
+ * before all numbers in Convex index ordering).
+ */
+export const findExpiredFiles = internalQuery({
+  args: {
+    threshold: v.number(),
+    limit: v.number(),
+  },
+  returns: v.array(
+    v.object({
+      _id: v.id("files"),
+      path: v.string(),
+      blobId: v.string(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const files = await ctx.db
+      .query("files")
+      .withIndex("expiresAt", (q) =>
+        q
+          .gt("attributes.expiresAt", 0)
+          .lt("attributes.expiresAt", args.threshold),
+      )
+      .take(args.limit);
+
+    return files.map((f) => ({
+      _id: f._id,
+      path: f.path,
+      blobId: f.blobId,
+    }));
+  },
+});
+
+/**
+ * Delete expired file records and decrement blob refCounts.
+ */
+export const deleteExpiredFileRecords = internalMutation({
+  args: {
+    files: v.array(
+      v.object({
+        _id: v.id("files"),
+        blobId: v.string(),
+      }),
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    for (const file of args.files) {
+      await deleteFileAndDecrefBlob(ctx, file._id, file.blobId, now);
+    }
+
+    return null;
+  },
+});
+
+/**
+ * GC expired files.
+ *
+ * Finds files where attributes.expiresAt is in the past, deletes the file
+ * records, and decrements blob refCounts. BGC will later clean up any
+ * orphaned blobs from storage.
+ *
+ * NOTE: This does NOT check freezeGc because it doesn't delete storage data.
+ * Blob data is preserved until BGC runs.
+ */
+export const gcExpiredFiles = internalAction({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx): Promise<null> => {
+    // Find expired files (no freezeGc check - we don't touch storage)
+    const threshold = Date.now();
+    const expired = await ctx.runQuery(internal.background.findExpiredFiles, {
+      threshold,
+      limit: GC_BATCH_SIZE,
+    });
+
+    if (expired.length === 0) {
+      return null;
+    }
+
+    console.log(`[FGC] Found ${expired.length} expired files to clean up`);
+
+    // Delete file records and decrement blob refCounts
+    await ctx.runMutation(internal.background.deleteExpiredFileRecords, {
+      files: expired.map((f) => ({ _id: f._id, blobId: f.blobId })),
+    });
+
+    console.log(`[FGC] Deleted ${expired.length} expired file records`);
+
+    // Self-schedule if batch was full
+    if (expired.length === GC_BATCH_SIZE) {
+      console.log("[FGC] Batch full, scheduling follow-up run");
+      await ctx.scheduler.runAfter(0, internal.background.gcExpiredFiles, {});
     }
 
     return null;

@@ -13,6 +13,7 @@ import type { Op, ConflictErrorData } from "../types.js";
 import type { MutationCtx } from "../_generated/server.js";
 
 import { fileCommitValidator } from "./types.js";
+import { deleteFileAndDecrefBlob } from "./helpers.js";
 
 export const commitFiles = mutation({
   args: {
@@ -106,8 +107,10 @@ export const commitFiles = mutation({
 
       if (existingFile) {
         // Update existing file to point to new blob
+        // Attributes are replaced (cleared if not specified, as if the old file was deleted first)
         await ctx.db.patch(existingFile._id, {
           blobId: file.blobId,
+          attributes: file.attributes,
         });
 
         // Decrement refCount on old blob (GC will clean up if it hits 0)
@@ -122,10 +125,11 @@ export const commitFiles = mutation({
           });
         }
       } else {
-        // Insert new file
+        // Insert new file with optional attributes
         await ctx.db.insert("files", {
           path: file.path,
           blobId: file.blobId,
+          attributes: file.attributes,
         });
       }
 
@@ -244,21 +248,7 @@ async function applyOperation(
 
   // Apply the operation
   if (op.op === "delete") {
-    // Delete file record
-    await ctx.db.delete(sourceFile._id);
-
-    // Decrement refCount on source blob
-    const blob = await ctx.db
-      .query("blobs")
-      .withIndex("blobId", (q) => q.eq("blobId", sourceFile.blobId))
-      .unique();
-
-    if (blob) {
-      await ctx.db.patch(blob._id, {
-        refCount: blob.refCount - 1,
-        updatedAt: now,
-      });
-    }
+    await deleteFileAndDecrefBlob(ctx, sourceFile._id, sourceFile.blobId, now);
   } else if (op.op === "move") {
     // Handle overwrite at dest (basis: undefined or string means overwrite may happen)
     // basis: null means dest must not exist (validated above), so no overwrite needed
@@ -287,9 +277,11 @@ async function applyOperation(
       }
     }
 
-    // Update source file's path to dest
+    // Update source file's path to dest and clear attributes
+    // (attributes are path-specific, not preserved on move)
     await ctx.db.patch(sourceFile._id, {
       path: op.dest.path,
+      attributes: undefined,
     });
   } else if (op.op === "copy") {
     // Increment refCount on source blob
@@ -313,9 +305,10 @@ async function applyOperation(
 
     if (destFile) {
       // Dest exists - overwrite (basis: undefined or string, validated above)
-      // Update dest file to point to source blob
+      // Update dest file to point to source blob and clear attributes
       await ctx.db.patch(destFile._id, {
         blobId: sourceFile.blobId,
+        attributes: undefined,
       });
 
       // Decrement refCount on old dest blob
@@ -331,12 +324,36 @@ async function applyOperation(
         });
       }
     } else {
-      // Dest doesn't exist - create new file record
+      // Dest doesn't exist - create new file record (no attributes)
       await ctx.db.insert("files", {
         path: op.dest.path,
         blobId: sourceFile.blobId,
       });
     }
+  } else if (op.op === "setAttributes") {
+    // Merge attributes: null = clear, value = set, undefined = keep existing
+    const currentAttrs = sourceFile.attributes ?? {};
+    const newAttrs: { expiresAt?: number } = {};
+
+    // Handle expiresAt
+    if (op.attributes.expiresAt === null) {
+      // Clear - don't include in newAttrs
+    } else if (op.attributes.expiresAt !== undefined) {
+      // Set to new value
+      newAttrs.expiresAt = op.attributes.expiresAt;
+    } else {
+      // Keep existing
+      if (currentAttrs.expiresAt !== undefined) {
+        newAttrs.expiresAt = currentAttrs.expiresAt;
+      }
+    }
+
+    // Only set attributes if there's something to set, otherwise clear
+    const finalAttrs = Object.keys(newAttrs).length > 0 ? newAttrs : undefined;
+
+    await ctx.db.patch(sourceFile._id, {
+      attributes: finalAttrs,
+    });
   }
 }
 

@@ -84,6 +84,76 @@ async function countBlobs(ctx: { db: any }): Promise<number> {
   return blobs.length;
 }
 
+async function countFiles(ctx: { db: any }): Promise<number> {
+  const files = await ctx.db.query("files").collect();
+  return files.length;
+}
+
+async function createExpiredFile(
+  ctx: { db: any },
+  path: string,
+  blobId: string,
+  expiredAgoMs: number,
+) {
+  // Create blob first
+  await ctx.db.insert("blobs", {
+    blobId,
+    metadata: { contentType: "text/plain", size: 100 },
+    refCount: 1,
+    updatedAt: Date.now(),
+  });
+  // Create file with expired expiresAt
+  await ctx.db.insert("files", {
+    path,
+    blobId,
+    attributes: { expiresAt: Date.now() - expiredAgoMs },
+  });
+}
+
+async function createFileWithFutureExpiry(
+  ctx: { db: any },
+  path: string,
+  blobId: string,
+  expiresInMs: number,
+) {
+  await ctx.db.insert("blobs", {
+    blobId,
+    metadata: { contentType: "text/plain", size: 100 },
+    refCount: 1,
+    updatedAt: Date.now(),
+  });
+  await ctx.db.insert("files", {
+    path,
+    blobId,
+    attributes: { expiresAt: Date.now() + expiresInMs },
+  });
+}
+
+async function createFileWithoutExpiry(
+  ctx: { db: any },
+  path: string,
+  blobId: string,
+) {
+  await ctx.db.insert("blobs", {
+    blobId,
+    metadata: { contentType: "text/plain", size: 100 },
+    refCount: 1,
+    updatedAt: Date.now(),
+  });
+  await ctx.db.insert("files", {
+    path,
+    blobId,
+    // No attributes
+  });
+}
+
+async function getBlob(ctx: { db: any }, blobId: string) {
+  return await ctx.db
+    .query("blobs")
+    .withIndex("blobId", (q: any) => q.eq("blobId", blobId))
+    .unique();
+}
+
 // ============================================================================
 // Upload GC (UGC) Tests
 // ============================================================================
@@ -418,6 +488,206 @@ describe("Blob GC (BGC)", () => {
 
       await t.run(async (ctx) => {
         expect(await countBlobs(ctx)).toBe(0);
+      });
+
+      vi.useRealTimers();
+    });
+  });
+});
+
+// ============================================================================
+// File GC (FGC) Tests
+// ============================================================================
+
+describe("File GC (FGC)", () => {
+  describe("findExpiredFiles", () => {
+    test("returns files with expiresAt in the past", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createExpiredFile(ctx, "/expired-1.txt", "blob-1", TWO_HOURS_MS);
+        await createExpiredFile(ctx, "/expired-2.txt", "blob-2", TWO_HOURS_MS);
+      });
+
+      const expired = await t.query(internal.background.findExpiredFiles, {
+        threshold: Date.now(),
+        limit: 100,
+      });
+
+      expect(expired).toHaveLength(2);
+      expect(expired.map((f) => f.path).sort()).toEqual([
+        "/expired-1.txt",
+        "/expired-2.txt",
+      ]);
+    });
+
+    test("does not return files with expiresAt in the future", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createExpiredFile(ctx, "/expired.txt", "blob-1", TWO_HOURS_MS);
+        await createFileWithFutureExpiry(
+          ctx,
+          "/not-expired.txt",
+          "blob-2",
+          ONE_HOUR_MS,
+        );
+      });
+
+      const expired = await t.query(internal.background.findExpiredFiles, {
+        threshold: Date.now(),
+        limit: 100,
+      });
+
+      expect(expired).toHaveLength(1);
+      expect(expired[0].path).toBe("/expired.txt");
+    });
+
+    test("does not return files without expiresAt", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createExpiredFile(ctx, "/expired.txt", "blob-1", TWO_HOURS_MS);
+        await createFileWithoutExpiry(ctx, "/no-expiry.txt", "blob-2");
+      });
+
+      const expired = await t.query(internal.background.findExpiredFiles, {
+        threshold: Date.now(),
+        limit: 100,
+      });
+
+      expect(expired).toHaveLength(1);
+      expect(expired[0].path).toBe("/expired.txt");
+    });
+
+    test("respects limit parameter", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        for (let i = 0; i < 10; i++) {
+          await createExpiredFile(
+            ctx,
+            `/file-${i}.txt`,
+            `blob-${i}`,
+            TWO_HOURS_MS,
+          );
+        }
+      });
+
+      const expired = await t.query(internal.background.findExpiredFiles, {
+        threshold: Date.now(),
+        limit: 5,
+      });
+
+      expect(expired).toHaveLength(5);
+    });
+  });
+
+  describe("gcExpiredFiles", () => {
+    test("deletes expired files from DB", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createExpiredFile(ctx, "/expired-1.txt", "blob-1", TWO_HOURS_MS);
+        await createExpiredFile(ctx, "/expired-2.txt", "blob-2", TWO_HOURS_MS);
+      });
+
+      await t.action(internal.background.gcExpiredFiles, {});
+
+      await t.run(async (ctx) => {
+        expect(await countFiles(ctx)).toBe(0);
+      });
+    });
+
+    test("decrements blob refCount when file is deleted", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createExpiredFile(ctx, "/expired.txt", "blob-1", TWO_HOURS_MS);
+      });
+
+      await t.action(internal.background.gcExpiredFiles, {});
+
+      await t.run(async (ctx) => {
+        const blob = await getBlob(ctx, "blob-1");
+        expect(blob).not.toBeNull();
+        expect(blob!.refCount).toBe(0);
+      });
+    });
+
+    test("does NOT skip when freezeGc is true (no storage deletion)", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await storeConfig(ctx, { ...testConfig, freezeGc: true });
+        await createExpiredFile(ctx, "/expired.txt", "blob-1", TWO_HOURS_MS);
+      });
+
+      await t.action(internal.background.gcExpiredFiles, {});
+
+      await t.run(async (ctx) => {
+        // File should be deleted even with freezeGc (no storage impact)
+        expect(await countFiles(ctx)).toBe(0);
+      });
+    });
+
+    test("does not delete files with future expiresAt", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFileWithFutureExpiry(
+          ctx,
+          "/not-expired.txt",
+          "blob-1",
+          ONE_HOUR_MS,
+        );
+      });
+
+      await t.action(internal.background.gcExpiredFiles, {});
+
+      await t.run(async (ctx) => {
+        expect(await countFiles(ctx)).toBe(1);
+      });
+    });
+
+    test("does not delete files without expiresAt", async () => {
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        await createFileWithoutExpiry(ctx, "/no-expiry.txt", "blob-1");
+      });
+
+      await t.action(internal.background.gcExpiredFiles, {});
+
+      await t.run(async (ctx) => {
+        expect(await countFiles(ctx)).toBe(1);
+      });
+    });
+
+    test("cleans up all expired files across multiple scheduled batches (150 items)", async () => {
+      vi.useFakeTimers();
+      const t = initConvexTest();
+
+      await t.run(async (ctx) => {
+        // Create 150 expired files (exceeds batch size of 100)
+        for (let i = 0; i < 150; i++) {
+          await createExpiredFile(
+            ctx,
+            `/file-${i}.txt`,
+            `blob-${i}`,
+            TWO_HOURS_MS,
+          );
+        }
+      });
+
+      await t.action(internal.background.gcExpiredFiles, {});
+      await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+
+      await t.run(async (ctx) => {
+        expect(await countFiles(ctx)).toBe(0);
+        // All blobs should have refCount=0
+        const blobs = await ctx.db.query("blobs").collect();
+        expect(blobs.every((b: any) => b.refCount === 0)).toBe(true);
       });
 
       vi.useRealTimers();

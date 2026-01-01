@@ -57,6 +57,7 @@ export const stat = query({
       blobId: file.blobId,
       contentType: blob.metadata.contentType,
       size: blob.metadata.size,
+      attributes: file.attributes,
     };
   },
 });
@@ -140,6 +141,7 @@ export const list = query({
           blobId: file.blobId,
           contentType: blob.metadata.contentType,
           size: blob.metadata.size,
+          attributes: file.attributes,
         };
       }),
     );

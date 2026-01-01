@@ -61,6 +61,17 @@ export const configValidator = v.object({
 export type Config = Infer<typeof configValidator>;
 
 /**
+ * Validator for file attributes stored on the path.
+ * Attributes are cleared on move/copy operations.
+ */
+export const fileAttributesValidator = v.object({
+  expiresAt: v.optional(v.number()), // Unix timestamp (ms) when file expires
+});
+
+/** TypeScript type for file attributes. */
+export type FileAttributes = Infer<typeof fileAttributesValidator>;
+
+/**
  * Validator for file metadata returned by stat and other queries.
  */
 export const fileMetadataValidator = v.object({
@@ -68,10 +79,24 @@ export const fileMetadataValidator = v.object({
   blobId: v.string(),
   contentType: v.string(),
   size: v.number(),
+  attributes: v.optional(fileAttributesValidator),
 });
 
 /** TypeScript type for file metadata. */
 export type FileMetadata = Infer<typeof fileMetadataValidator>;
+
+/**
+ * Validator for setAttributes input.
+ * - undefined: don't change this attribute
+ * - null: clear this attribute
+ * - value: set this attribute
+ */
+export const setAttributesInputValidator = v.object({
+  expiresAt: v.optional(v.union(v.null(), v.number())),
+});
+
+/** TypeScript type for setAttributes input. */
+export type SetAttributesInput = Infer<typeof setAttributesInputValidator>;
 
 /**
  * Validator for destination in move/copy operations.
@@ -109,14 +134,24 @@ export const deleteOpValidator = v.object({
   source: fileMetadataValidator,
 });
 
+export const setAttributesOpValidator = v.object({
+  op: v.literal("setAttributes"),
+  source: fileMetadataValidator,
+  attributes: setAttributesInputValidator,
+});
+
 export const opValidator = v.union(
   moveOpValidator,
   copyOpValidator,
   deleteOpValidator,
+  setAttributesOpValidator,
 );
 
 /** TypeScript type for a transact operation. */
 export type Op = Infer<typeof opValidator>;
+
+/** TypeScript type for setAttributes operation. */
+export type SetAttributesOp = Infer<typeof setAttributesOpValidator>;
 
 // ============================================================================
 // Error Types for ConvexError

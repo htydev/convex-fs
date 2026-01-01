@@ -36,4 +36,20 @@ crons.cron(
   internal.background.gcOrphanedBlobs,
 );
 
+/**
+ * FGC: GC expired files every minute.
+ *
+ * Cleans up files where attributes.expiresAt is in the past.
+ * Deletes the file record and decrements the blob refCount.
+ * BGC will later clean up orphaned blobs from storage.
+ *
+ * Runs every minute for quick QoS on expiration promises.
+ * Does NOT respect freezeGc since it doesn't delete storage data.
+ */
+crons.cron(
+  "gc-expired-files",
+  "* * * * *", // Every minute
+  internal.background.gcExpiredFiles,
+);
+
 export default crons;

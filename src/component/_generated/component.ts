@@ -42,7 +42,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 }
               | { type: "test" };
           };
-          files: Array<{ basis?: null | string; blobId: string; path: string }>;
+          files: Array<{
+            attributes?: { expiresAt?: number };
+            basis?: null | string;
+            blobId: string;
+            path: string;
+          }>;
         },
         null,
         Name
@@ -195,6 +200,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           continueCursor: string;
           isDone: boolean;
           page: Array<{
+            attributes?: { expiresAt?: number };
             blobId: string;
             contentType: string;
             path: string;
@@ -248,6 +254,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           path: string;
         },
         null | {
+          attributes?: { expiresAt?: number };
           blobId: string;
           contentType: string;
           path: string;
@@ -278,6 +285,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 dest: { basis?: null | string; path: string };
                 op: "move";
                 source: {
+                  attributes?: { expiresAt?: number };
                   blobId: string;
                   contentType: string;
                   path: string;
@@ -288,6 +296,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 dest: { basis?: null | string; path: string };
                 op: "copy";
                 source: {
+                  attributes?: { expiresAt?: number };
                   blobId: string;
                   contentType: string;
                   path: string;
@@ -297,6 +306,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             | {
                 op: "delete";
                 source: {
+                  attributes?: { expiresAt?: number };
+                  blobId: string;
+                  contentType: string;
+                  path: string;
+                  size: number;
+                };
+              }
+            | {
+                attributes: { expiresAt?: null | number };
+                op: "setAttributes";
+                source: {
+                  attributes?: { expiresAt?: number };
                   blobId: string;
                   contentType: string;
                   path: string;
@@ -485,6 +506,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             continueCursor: string;
             isDone: boolean;
             page: Array<{
+              attributes?: { expiresAt?: number };
               blobId: string;
               contentType: string;
               path: string;
@@ -538,6 +560,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             path: string;
           },
           null | {
+            attributes?: { expiresAt?: number };
             blobId: string;
             contentType: string;
             path: string;
@@ -591,6 +614,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 | { type: "test" };
             };
             files: Array<{
+              attributes?: { expiresAt?: number };
               basis?: null | string;
               blobId: string;
               path: string;
@@ -622,6 +646,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   dest: { basis?: null | string; path: string };
                   op: "move";
                   source: {
+                    attributes?: { expiresAt?: number };
                     blobId: string;
                     contentType: string;
                     path: string;
@@ -632,6 +657,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   dest: { basis?: null | string; path: string };
                   op: "copy";
                   source: {
+                    attributes?: { expiresAt?: number };
                     blobId: string;
                     contentType: string;
                     path: string;
@@ -641,6 +667,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               | {
                   op: "delete";
                   source: {
+                    attributes?: { expiresAt?: number };
+                    blobId: string;
+                    contentType: string;
+                    path: string;
+                    size: number;
+                  };
+                }
+              | {
+                  attributes: { expiresAt?: null | number };
+                  op: "setAttributes";
+                  source: {
+                    attributes?: { expiresAt?: number };
                     blobId: string;
                     contentType: string;
                     path: string;
