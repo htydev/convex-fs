@@ -1,8 +1,10 @@
 # Changelog
 
-## 0.1.4
+## 0.1.5
 
 Removed lucide-react from deps.
+
+## 0.1.4
 
 ## 0.1.3
 
