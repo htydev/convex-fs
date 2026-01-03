@@ -774,9 +774,28 @@ export function registerRoutes(
         }
       }
 
+      // Extract extra params to pass through to CDN (excluding ones we handle)
+      const requestUrl = new URL(req.url);
+      const extraParams: Record<string, string> = {};
+      const handledParams = new Set(["path"]);
+
+      for (const [key, value] of requestUrl.searchParams) {
+        if (!handledParams.has(key)) {
+          extraParams[key] = value;
+        }
+      }
+
+      const extraParamsOrUndefined =
+        Object.keys(extraParams).length > 0 ? extraParams : undefined;
+
       // Auth check for download
       try {
-        const allowed = await config.downloadAuth(ctx, blobId, path);
+        const allowed = await config.downloadAuth(
+          ctx,
+          blobId,
+          path,
+          extraParamsOrUndefined,
+        );
         if (!allowed) {
           return new Response(JSON.stringify({ error: "Forbidden" }), {
             status: 403,
@@ -792,21 +811,9 @@ export function registerRoutes(
 
       // Get download URL using the fs instance's config
       try {
-        // Extract extra params to pass through to CDN (excluding ones we handle)
-        const requestUrl = new URL(req.url);
-        const extraParams: Record<string, string> = {};
-        const handledParams = new Set(["path"]);
-
-        for (const [key, value] of requestUrl.searchParams) {
-          if (!handledParams.has(key)) {
-            extraParams[key] = value;
-          }
-        }
-
         // Get download URL with extra params included (and signed if token auth)
         const downloadUrl = await fs.getDownloadUrl(ctx, blobId, {
-          extraParams:
-            Object.keys(extraParams).length > 0 ? extraParams : undefined,
+          extraParams: extraParamsOrUndefined,
         });
 
         // Cache for token TTL minus buffer

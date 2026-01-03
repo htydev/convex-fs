@@ -43,12 +43,17 @@ export type UploadAuthCallback = (ctx: HttpActionCtx) => Promise<boolean>;
  * Auth callback for downloads.
  * Called before redirecting to the download URL.
  * Return true to allow access, false to deny.
- * If a path is provided, it is the path of the file being downloaded.
+ *
+ * @param ctx - The HTTP action context
+ * @param blobId - The blob ID being downloaded
+ * @param path - The path of the file being downloaded (if provided in request)
+ * @param extraParams - Any extra query params from the request that will be passed to the CDN
  */
 export type DownloadAuthCallback = (
   ctx: HttpActionCtx,
   blobId: string,
   path?: string,
+  extraParams?: Record<string, string>,
 ) => Promise<boolean>;
 
 // =============================================================================
