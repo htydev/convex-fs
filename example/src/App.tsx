@@ -516,6 +516,7 @@ function App() {
                             FS_PREFIX,
                             image.blobId,
                             image.path,
+                            { filename: image.path },
                           )}
                           target="_blank"
                           rel="noopener noreferrer"

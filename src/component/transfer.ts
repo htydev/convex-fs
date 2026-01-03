@@ -100,19 +100,23 @@ export const getUploadsByBlobIds = internalQuery({
 /**
  * Get a download URL for a blob.
  * For Bunny storage, this generates a signed CDN URL.
+ *
+ * Extra params will be included in the URL and, if token auth is enabled,
+ * in the token signature. This allows passing params through to CDN edge rules.
  */
 export const getDownloadUrl = action({
   args: {
     config: configValidator,
     blobId: v.string(),
+    extraParams: v.optional(v.record(v.string(), v.string())),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
-    const { config, blobId } = args;
+    const { config, blobId, extraParams } = args;
 
     const store = createBlobStore(config.storage);
     const ttl = config.downloadUrlTtl ?? DEFAULT_DOWNLOAD_URL_TTL;
 
-    return store.generateDownloadUrl(blobId, { expiresIn: ttl });
+    return store.generateDownloadUrl(blobId, { expiresIn: ttl, extraParams });
   },
 });

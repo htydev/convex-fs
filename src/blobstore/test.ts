@@ -1,4 +1,9 @@
-import type { BlobStore, DeleteResult, PutOptions } from "./types.js";
+import type {
+  BlobStore,
+  DeleteResult,
+  DownloadUrlOptions,
+  PutOptions,
+} from "./types.js";
 
 /**
  * In-memory BlobStore for testing.
@@ -22,8 +27,18 @@ export function createTestBlobStore(): BlobStore & {
       );
     },
 
-    async generateDownloadUrl(key: string): Promise<string> {
-      return `test://${key}`;
+    async generateDownloadUrl(
+      key: string,
+      opts?: DownloadUrlOptions,
+    ): Promise<string> {
+      let url = `test://${key}`;
+      if (opts?.extraParams && Object.keys(opts.extraParams).length > 0) {
+        const queryString = Object.entries(opts.extraParams)
+          .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+          .join("&");
+        url += `?${queryString}`;
+      }
+      return url;
     },
 
     async put(

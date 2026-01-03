@@ -58,6 +58,12 @@ export interface UploadUrlOptions {
 export interface DownloadUrlOptions {
   /** URL expiration time in seconds. Defaults to 3600 (1 hour). */
   expiresIn?: number;
+  /**
+   * Extra query parameters to include in the URL.
+   * These will be included in the token signature (if token auth is enabled)
+   * and passed through to the CDN, where edge rules can act on them.
+   */
+  extraParams?: Record<string, string>;
 }
 
 /**

@@ -118,6 +118,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 }
               | { type: "test" };
           };
+          extraParams?: Record<string, string>;
         },
         string,
         Name
@@ -571,6 +572,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 }
               | { type: "test" };
           };
+          extraParams?: Record<string, string>;
         },
         string,
         Name

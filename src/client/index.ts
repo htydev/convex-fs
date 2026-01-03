@@ -162,10 +162,15 @@ export class ConvexFS {
    * }
    * ```
    */
-  async getDownloadUrl(ctx: ActionCtx, blobId: string): Promise<string> {
+  async getDownloadUrl(
+    ctx: ActionCtx,
+    blobId: string,
+    opts?: { extraParams?: Record<string, string> },
+  ): Promise<string> {
     return await ctx.runAction(this.component.lib.getDownloadUrl, {
       config: this.config,
       blobId,
+      extraParams: opts?.extraParams,
     });
   }
 
@@ -787,7 +792,22 @@ export function registerRoutes(
 
       // Get download URL using the fs instance's config
       try {
-        const downloadUrl = await fs.getDownloadUrl(ctx, blobId);
+        // Extract extra params to pass through to CDN (excluding ones we handle)
+        const requestUrl = new URL(req.url);
+        const extraParams: Record<string, string> = {};
+        const handledParams = new Set(["path"]);
+
+        for (const [key, value] of requestUrl.searchParams) {
+          if (!handledParams.has(key)) {
+            extraParams[key] = value;
+          }
+        }
+
+        // Get download URL with extra params included (and signed if token auth)
+        const downloadUrl = await fs.getDownloadUrl(ctx, blobId, {
+          extraParams:
+            Object.keys(extraParams).length > 0 ? extraParams : undefined,
+        });
 
         // Cache for token TTL minus buffer
         const tokenTtl = fs.config.downloadUrlTtl ?? 3600; // Default 1 hour
@@ -815,11 +835,12 @@ export function registerRoutes(
 }
 
 /**
- * Build a download URL for a blob.
- * @param siteUrl - The base URL of the site
- * @param prefix - The prefix for the download URL
+ * Build a download URL for the given blob.
+ * @param siteUrl - The site URL
+ * @param prefix - The path prefix
  * @param blobId - The ID of the blob
  * @param path - The path of the file being downloaded
+ * @param params - Additional query parameters to pass through to the CDN
  * @returns The download URL
  */
 export function buildDownloadUrl(
@@ -827,12 +848,18 @@ export function buildDownloadUrl(
   prefix: string,
   blobId: string,
   path?: string,
+  params?: Record<string, string>,
 ): string {
-  let url = `${siteUrl}${prefix}/blobs/${blobId}`;
+  const url = new URL(`${prefix}/blobs/${blobId}`, siteUrl);
   if (path !== undefined) {
-    url += `?path=${encodeURIComponent(path)}`;
+    url.searchParams.set("path", path);
   }
-  return url;
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+  }
+  return url.toString();
 }
 
 /**
