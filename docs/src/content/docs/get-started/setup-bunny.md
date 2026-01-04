@@ -25,11 +25,10 @@ If you don't already have an account, head over to
     2. Pick a storage tier. **Edge(SSD)** is strongly recommended for
        production.
     3. Pick a main region. If you picked **Edge(SSD)**, then **Frankfurt (DE)**
-       is the mandatory choice. If you pick a different main region,
-       remember it. You'll  need it to configure ConvexFS soon.
+       is the mandatory choice. If you pick a different main region, remember
+       it. You'll need it to configure ConvexFS soon.
     4. Choose replication regions for your data. The defaults get your data
-       replicated pretty broadly around the world, and the CDN can do the
-       rest.
+       replicated pretty broadly around the world, and the CDN can do the rest.
     5. Click the **Add Storage Zone** button.
 
 _If you want to run a tighter budget, using **Standard** storage and/or fewer
@@ -113,7 +112,7 @@ component:
 - BUNNY_TOKEN_KEY
 - BUNNY_API_KEY
 
-And if you used a non-Frankfurt main region for your storage zone, set the
-name of that region to:
+And if you used a non-Frankfurt main region for your storage zone, set the name
+of that region to:
 
- - BUNNY_REGION
+- BUNNY_REGION

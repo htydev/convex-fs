@@ -12,6 +12,7 @@
  */
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
+import { paginator } from "convex-helpers/server/pagination";
 import {
   internalAction,
   internalMutation,
@@ -21,7 +22,6 @@ import {
 import { api, internal } from "../_generated/api.js";
 
 import { configValidator, fileMetadataValidator } from "../types.js";
-import { paginator } from "convex-helpers/server/pagination";
 import schema from "../schema.js";
 
 export const stat = query({
@@ -109,15 +109,15 @@ export const list = query({
       .withIndex("path", (q) => {
         if (prefix) {
           // Match paths starting with prefix using range query
-          return q.gte("path", prefix).lt("path", prefix + "\uffff");
+          return q.gte("path", prefix).lt("path", `${prefix}\uffff`);
         }
         return q;
       })
       .order("asc");
 
     const result = await paginatedQuery.paginate({
-      cursor: cursor,
-      numItems: numItems,
+      cursor,
+      numItems,
       endCursor: endCursor ?? undefined,
     });
 

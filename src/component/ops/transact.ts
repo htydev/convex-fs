@@ -5,15 +5,14 @@
  * - commitFiles: Commit uploaded blobs to file paths
  * - transact: Execute atomic filesystem operations (move, copy, delete)
  */
-import { v, ConvexError } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation } from "../_generated/server.js";
 
 import { configValidator, opValidator } from "../types.js";
-import type { Op, ConflictErrorData } from "../types.js";
-import type { MutationCtx } from "../_generated/server.js";
-
 import { fileCommitValidator } from "./types.js";
 import { deleteFileAndDecrefBlob } from "./helpers.js";
+import type { ConflictErrorData, Op } from "../types.js";
+import type { MutationCtx } from "../_generated/server.js";
 
 export const commitFiles = mutation({
   args: {

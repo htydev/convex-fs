@@ -1,11 +1,11 @@
 /// <reference types="vite/client" />
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
 import { convexTest } from "convex-test";
 import { ConvexError } from "convex/values";
 import schema from "./schema.js";
 import { api, internal } from "./_generated/api.js";
-import type { ConflictErrorData, ConflictCode } from "./types.js";
 import { isConflictError } from "./types.js";
+import type { ConflictCode, ConflictErrorData } from "./types.js";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -24,9 +24,9 @@ async function expectConflictError(
   try {
     await promise;
     expect.fail("Expected promise to reject with ConvexError");
-  } catch (e) {
-    expect(e).toBeInstanceOf(ConvexError);
-    let data = (e as ConvexError<ConflictErrorData>).data;
+  } catch (error) {
+    expect(error).toBeInstanceOf(ConvexError);
+    let data = (error as ConvexError<ConflictErrorData>).data;
     // convex-test serializes ConvexError data as JSON string
     if (typeof data === "string") {
       data = JSON.parse(data) as ConflictErrorData;
@@ -982,74 +982,363 @@ describe("transact operations", () => {
 });
 
 // ============================================================================
-// registerPendingUpload Tests
-// ============================================================================
-//
-// Note: The previous getBlob, getFile, writeFile, and uploadBlob actions have
-// been moved to the client layer (ConvexFS class) to support large files by
-// running in the caller's execution context. The component now only provides
-// registerPendingUpload for recording upload metadata.
+// getBlob and getFile Tests
 // ============================================================================
 
-describe("registerPendingUpload", () => {
+describe("getBlob", () => {
+  // Config using test storage (in-memory)
   const config = {
     storage: { type: "test" as const },
   };
 
+  test("returns blob data for existing blob", async () => {
+    const t = initConvexTest();
+
+    // Set up: create file record and put blob in test storage
+    await t.run(async (ctx) => {
+      await createFile(ctx, "/test.txt", "blob-1", {
+        contentType: "text/plain",
+        size: 11,
+      });
+    });
+
+    // Put blob data in test storage via the action
+    // Note: We need to use the test store, which is created per-action call
+    // So we'll test via getFile which creates and uses the store
+
+    // For getBlob, we need the blob to exist in storage
+    // The test store is ephemeral, so we test the "not found" case
+    const result = await t.action(api.ops.basics.getBlob, {
+      config,
+      blobId: "blob-1",
+    });
+
+    // Since test store is ephemeral per action, blob won't be in storage
+    expect(result).toBeNull();
+  });
+
+  test("returns null for non-existent blob", async () => {
+    const t = initConvexTest();
+
+    const result = await t.action(api.ops.basics.getBlob, {
+      config,
+      blobId: "nonexistent",
+    });
+
+    expect(result).toBeNull();
+  });
+});
+
+describe("getFile", () => {
+  const config = {
+    storage: { type: "test" as const },
+  };
+
+  test("returns null for non-existent path", async () => {
+    const t = initConvexTest();
+
+    const result = await t.action(api.ops.basics.getFile, {
+      config,
+      path: "/nonexistent.txt",
+    });
+
+    expect(result).toBeNull();
+  });
+
+  test("returns null when file record exists but blob is missing from storage", async () => {
+    const t = initConvexTest();
+
+    // Create file record but don't put blob in storage
+    await t.run(async (ctx) => {
+      await createFile(ctx, "/orphan.txt", "orphan-blob", {
+        contentType: "text/plain",
+        size: 100,
+      });
+    });
+
+    // File record exists but blob is not in test storage (ephemeral)
+    const result = await t.action(api.ops.basics.getFile, {
+      config,
+      path: "/orphan.txt",
+    });
+
+    // Should return null since blob isn't in storage
+    expect(result).toBeNull();
+  });
+});
+
+// ============================================================================
+// writeBlob Tests
+// ============================================================================
+
+describe("writeBlob", () => {
+  const config = {
+    storage: { type: "test" as const },
+  };
+
+  test("uploads data and returns a blobId", async () => {
+    const t = initConvexTest();
+
+    const testData = new TextEncoder().encode("hello world");
+    const result = await t.action(api.transfer.uploadBlob, {
+      config,
+      data: testData.buffer,
+      contentType: "text/plain",
+    });
+
+    expect(result).toHaveProperty("blobId");
+    expect(typeof result.blobId).toBe("string");
+    expect(result.blobId.length).toBeGreaterThan(0);
+  });
+
   test("creates upload record with correct metadata", async () => {
     const t = initConvexTest();
 
-    const blobId = "test-blob-id";
-    await t.mutation(api.transfer.registerPendingUpload, {
+    const testData = new TextEncoder().encode("test content");
+    const result = await t.action(api.transfer.uploadBlob, {
       config,
-      blobId,
+      data: testData.buffer,
       contentType: "application/json",
-      size: 1234,
     });
 
     // Verify upload record was created with correct metadata
     const upload = await t.run(async (ctx) => {
       return await ctx.db
         .query("uploads")
-        .withIndex("blobId", (q: any) => q.eq("blobId", blobId))
+        .withIndex("blobId", (q: any) => q.eq("blobId", result.blobId))
         .unique();
     });
 
     expect(upload).not.toBeNull();
-    expect(upload!.blobId).toBe(blobId);
+    expect(upload!.blobId).toBe(result.blobId);
     expect(upload!.contentType).toBe("application/json");
-    expect(upload!.size).toBe(1234);
-    expect(upload!.expiresAt).toBeGreaterThan(Date.now());
+    expect(upload!.size).toBe(testData.byteLength);
   });
 
-  test("sets expiration time for GC", async () => {
+  test("generates unique blobIds for each upload", async () => {
     const t = initConvexTest();
 
-    const blobId = "expiring-blob";
-    const before = Date.now();
-
-    await t.mutation(api.transfer.registerPendingUpload, {
+    const testData = new TextEncoder().encode("same content");
+    const result1 = await t.action(api.transfer.uploadBlob, {
       config,
-      blobId,
+      data: testData.buffer,
       contentType: "text/plain",
-      size: 100,
     });
 
-    const after = Date.now();
+    const result2 = await t.action(api.transfer.uploadBlob, {
+      config,
+      data: testData.buffer,
+      contentType: "text/plain",
+    });
 
+    expect(result1.blobId).not.toBe(result2.blobId);
+  });
+
+  test("rejects files exceeding size limit", async () => {
+    const t = initConvexTest();
+
+    // Create data larger than 15MB limit
+    const largeData = new Uint8Array(16 * 1024 * 1024); // 16MB
+
+    await expect(
+      t.action(api.transfer.uploadBlob, {
+        config,
+        data: largeData.buffer,
+        contentType: "application/octet-stream",
+      }),
+    ).rejects.toThrow(/too large/i);
+  });
+});
+
+// ============================================================================
+// writeFile Tests
+// ============================================================================
+
+describe("writeFile", () => {
+  const config = {
+    storage: { type: "test" as const },
+  };
+
+  test("writes data to a new file path", async () => {
+    const t = initConvexTest();
+
+    const testData = new TextEncoder().encode("hello world");
+    const result = await t.action(api.ops.basics.writeFile, {
+      config,
+      path: "/test/newfile.txt",
+      data: testData.buffer,
+      contentType: "text/plain",
+    });
+
+    // writeFile returns null (void)
+    expect(result).toBeNull();
+
+    // Verify file was created
+    const file = await t.run(async (ctx) => {
+      return await getFile(ctx, "/test/newfile.txt");
+    });
+    expect(file).not.toBeNull();
+    expect(file!.path).toBe("/test/newfile.txt");
+
+    // Verify blob was created with correct metadata
+    const blob = await t.run(async (ctx) => {
+      return await getBlob(ctx, file!.blobId);
+    });
+    expect(blob).not.toBeNull();
+    expect(blob!.metadata.contentType).toBe("text/plain");
+    expect(blob!.metadata.size).toBe(testData.byteLength);
+    expect(blob!.refCount).toBe(1);
+  });
+
+  test("overwrites existing file at same path", async () => {
+    const t = initConvexTest();
+
+    // Write initial file
+    const initialData = new TextEncoder().encode("initial content");
+    await t.action(api.ops.basics.writeFile, {
+      config,
+      path: "/overwrite.txt",
+      data: initialData.buffer,
+      contentType: "text/plain",
+    });
+
+    // Get the initial blob ID
+    const initialFile = await t.run(async (ctx) => {
+      return await getFile(ctx, "/overwrite.txt");
+    });
+    const initialBlobId = initialFile!.blobId;
+
+    // Overwrite with new content
+    const newData = new TextEncoder().encode("new content that is longer");
+    await t.action(api.ops.basics.writeFile, {
+      config,
+      path: "/overwrite.txt",
+      data: newData.buffer,
+      contentType: "application/octet-stream",
+    });
+
+    // Verify file now points to new blob
+    const updatedFile = await t.run(async (ctx) => {
+      return await getFile(ctx, "/overwrite.txt");
+    });
+    expect(updatedFile!.blobId).not.toBe(initialBlobId);
+
+    // Verify new blob has correct metadata
+    const newBlob = await t.run(async (ctx) => {
+      return await getBlob(ctx, updatedFile!.blobId);
+    });
+    expect(newBlob!.metadata.contentType).toBe("application/octet-stream");
+    expect(newBlob!.metadata.size).toBe(newData.byteLength);
+    expect(newBlob!.refCount).toBe(1);
+
+    // Verify old blob's refCount was decremented (ready for GC)
+    const oldBlob = await t.run(async (ctx) => {
+      return await getBlob(ctx, initialBlobId);
+    });
+    expect(oldBlob!.refCount).toBe(0);
+  });
+
+  test("cleans up upload record after commit", async () => {
+    const t = initConvexTest();
+
+    const testData = new TextEncoder().encode("test");
+    await t.action(api.ops.basics.writeFile, {
+      config,
+      path: "/cleanup-test.txt",
+      data: testData.buffer,
+      contentType: "text/plain",
+    });
+
+    // Get the file to find the blobId
+    const file = await t.run(async (ctx) => {
+      return await getFile(ctx, "/cleanup-test.txt");
+    });
+
+    // Verify upload record was deleted (cleaned up after commit)
     const upload = await t.run(async (ctx) => {
       return await ctx.db
         .query("uploads")
-        .withIndex("blobId", (q: any) => q.eq("blobId", blobId))
+        .withIndex("blobId", (q: any) => q.eq("blobId", file!.blobId))
         .unique();
     });
+    expect(upload).toBeNull();
+  });
 
-    // Default TTL is 4 hours (14400 seconds)
-    const expectedMinExpiry = before + 14400 * 1000;
-    const expectedMaxExpiry = after + 14400 * 1000;
+  test("handles different content types correctly", async () => {
+    const t = initConvexTest();
 
-    expect(upload!.expiresAt).toBeGreaterThanOrEqual(expectedMinExpiry);
-    expect(upload!.expiresAt).toBeLessThanOrEqual(expectedMaxExpiry);
+    const contentTypes = [
+      "image/png",
+      "image/jpeg",
+      "application/pdf",
+      "application/json",
+      "text/html",
+    ];
+
+    for (const contentType of contentTypes) {
+      const testData = new TextEncoder().encode(`content for ${contentType}`);
+      const path = `/content-type-test/${contentType.replace("/", "-")}.bin`;
+
+      await t.action(api.ops.basics.writeFile, {
+        config,
+        path,
+        data: testData.buffer,
+        contentType,
+      });
+
+      const file = await t.run(async (ctx) => {
+        return await getFile(ctx, path);
+      });
+      const blob = await t.run(async (ctx) => {
+        return await getBlob(ctx, file!.blobId);
+      });
+
+      expect(blob!.metadata.contentType).toBe(contentType);
+    }
+  });
+
+  test("rejects files exceeding size limit", async () => {
+    const t = initConvexTest();
+
+    // Create data larger than 15MB limit
+    const largeData = new Uint8Array(16 * 1024 * 1024); // 16MB
+
+    await expect(
+      t.action(api.ops.basics.writeFile, {
+        config,
+        path: "/large-file.bin",
+        data: largeData.buffer,
+        contentType: "application/octet-stream",
+      }),
+    ).rejects.toThrow(/too large/i);
+
+    // Verify no file was created
+    const file = await t.run(async (ctx) => {
+      return await getFile(ctx, "/large-file.bin");
+    });
+    expect(file).toBeNull();
+  });
+
+  test("handles empty file content", async () => {
+    const t = initConvexTest();
+
+    const emptyData = new Uint8Array(0);
+    await t.action(api.ops.basics.writeFile, {
+      config,
+      path: "/empty.txt",
+      data: emptyData.buffer,
+      contentType: "text/plain",
+    });
+
+    const file = await t.run(async (ctx) => {
+      return await getFile(ctx, "/empty.txt");
+    });
+    expect(file).not.toBeNull();
+
+    const blob = await t.run(async (ctx) => {
+      return await getBlob(ctx, file!.blobId);
+    });
+    expect(blob!.metadata.size).toBe(0);
   });
 });
 

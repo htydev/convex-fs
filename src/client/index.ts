@@ -33,16 +33,16 @@
  */
 
 import { httpActionGeneric } from "convex/server";
-import type { PaginationOptions, PaginationResult } from "convex/server";
 import { corsRouter } from "convex-helpers/server/cors";
+import type { PaginationOptions, PaginationResult } from "convex/server";
 import type { ComponentApi } from "../component/_generated/component.js";
 import type {
-  QueryCtx,
-  MutationCtx,
   ActionCtx,
-  RegisterRoutesConfig,
   ConvexFSOptions,
   HttpRouter,
+  MutationCtx,
+  QueryCtx,
+  RegisterRoutesConfig,
 } from "./types.js";
 import type { FileMetadata } from "../component/types.js";
 import { createBlobStore } from "../blobstore/index.js";
@@ -151,26 +151,30 @@ export class ConvexFS {
    * Without token authentication, returns an unsigned CDN URL.
    *
    * @param blobId - The blob identifier
+   * @param options.ttl - Optional TTL in seconds (overrides config.downloadUrlTtl, default 1 hour)
    * @returns Download URL
    *
    * @example
    * ```typescript
    * const file = await fs.stat(ctx, "/uploads/file.txt");
    * if (file) {
+   *   // Default 1 hour TTL
    *   const url = await fs.getDownloadUrl(ctx, file.blobId);
-   *   // Return URL to client for download
+   *   // Custom 24 hour TTL
+   *   const longUrl = await fs.getDownloadUrl(ctx, file.blobId, { ttl: 86400 });
    * }
    * ```
    */
   async getDownloadUrl(
     ctx: ActionCtx,
     blobId: string,
-    opts?: { extraParams?: Record<string, string> },
+    options?: { ttl?: number; extraParams?: Record<string, string> },
   ): Promise<string> {
     return await ctx.runAction(this.component.lib.getDownloadUrl, {
       config: this.config,
       blobId,
-      extraParams: opts?.extraParams,
+      ttl: options?.ttl,
+      extraParams: options?.extraParams,
     });
   }
 
@@ -672,12 +676,12 @@ export function registerRoutes(
   // Create CORS-enabled router for cross-origin requests
   const cors = corsRouter(http, {
     allowedOrigins: ["*"],
-    allowedHeaders: ["Content-Type", "Content-Length"],
+    allowedHeaders: ["Content-Type", "Content-Length", "Authorization"],
   });
 
   // Route: POST /fs/upload -> Stream directly to Bunny storage
   cors.route({
-    path: pathPrefix + "/upload",
+    path: `${pathPrefix}/upload`,
     method: "POST",
     handler: httpActionGeneric(async (ctx, req) => {
       // Auth check for upload
@@ -745,7 +749,7 @@ export function registerRoutes(
 
   // Route: GET /fs/blobs/{blobId} -> 302 redirect to CDN URL
   cors.route({
-    pathPrefix: pathPrefix + "/blobs/",
+    pathPrefix: `${pathPrefix}/blobs/`,
     method: "GET",
     handler: httpActionGeneric(async (ctx, req) => {
       // Extract blobId from URL

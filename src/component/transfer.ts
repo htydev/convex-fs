@@ -1,12 +1,11 @@
 import { v } from "convex/values";
 import {
   action,
-  mutation,
   internalMutation,
   internalQuery,
 } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
-import { createBlobStore } from "../blobstore/index.js";
+import { MAX_FILE_SIZE_BYTES, createBlobStore } from "./blobstore/index.js";
 import { configValidator } from "./types.js";
 
 const DEFAULT_DOWNLOAD_URL_TTL = 3600; // 1 hour
@@ -31,36 +30,49 @@ export const createUpload = internalMutation({
 });
 
 /**
- * Register a pending upload after the blob has been uploaded to storage.
- * Called by the client after uploading directly to the blob store.
- * This records the upload for GC tracking - uncommitted uploads will be
- * cleaned up after the grace period expires.
+ * Upload a blob to storage via server-side proxy.
+ * Called from HTTP action handler.
  */
-export const registerPendingUpload = mutation({
+export const uploadBlob = action({
   args: {
     config: configValidator,
-    blobId: v.string(),
+    data: v.bytes(),
     contentType: v.string(),
-    size: v.number(),
   },
-  returns: v.null(),
+  returns: v.object({
+    blobId: v.string(),
+  }),
   handler: async (ctx, args) => {
-    const { config, blobId, contentType, size } = args;
+    const { config, data, contentType } = args;
+
+    // Validate size (15MB limit to leave headroom under Convex 16MB return limit)
+    if (data.byteLength > MAX_FILE_SIZE_BYTES) {
+      throw new Error(
+        `File too large. Maximum size is ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB.`,
+      );
+    }
 
     // Store config for background GC (components can't access env vars)
     await ctx.runMutation(internal.config.ensureConfigStored, { config });
 
-    // Record the pending upload with metadata
+    // Generate blobId
+    const blobId = crypto.randomUUID();
+
+    // Create blob store and upload
+    const store = createBlobStore(config.storage);
+    await store.put(blobId, new Uint8Array(data), { contentType });
+
+    // Record the pending upload with metadata (we know size/contentType since we proxied)
     const ttl = DEFAULT_UPLOAD_COMMIT_TTL;
     const expiresAt = Date.now() + ttl * 1000;
-    await ctx.db.insert("uploads", {
+    await ctx.runMutation(internal.transfer.createUpload, {
       blobId,
       expiresAt,
       contentType,
-      size,
+      size: data.byteLength,
     });
 
-    return null;
+    return { blobId };
   },
 });
 
@@ -101,22 +113,23 @@ export const getUploadsByBlobIds = internalQuery({
  * Get a download URL for a blob.
  * For Bunny storage, this generates a signed CDN URL.
  *
- * Extra params will be included in the URL and, if token auth is enabled,
- * in the token signature. This allows passing params through to CDN edge rules.
+ * @param blobId - The blob identifier
+ * @param ttl - Optional TTL in seconds (overrides config.downloadUrlTtl)
  */
 export const getDownloadUrl = action({
   args: {
     config: configValidator,
     blobId: v.string(),
-    extraParams: v.optional(v.record(v.string(), v.string())),
+    ttl: v.optional(v.number()),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
-    const { config, blobId, extraParams } = args;
+    const { config, blobId, ttl } = args;
 
     const store = createBlobStore(config.storage);
-    const ttl = config.downloadUrlTtl ?? DEFAULT_DOWNLOAD_URL_TTL;
+    const effectiveTtl =
+      ttl ?? config.downloadUrlTtl ?? DEFAULT_DOWNLOAD_URL_TTL;
 
-    return store.generateDownloadUrl(blobId, { expiresIn: ttl, extraParams });
+    return store.generateDownloadUrl(blobId, { expiresIn: effectiveTtl });
   },
 });

@@ -1,46 +1,23 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { usePaginatedQuery } from "convex-helpers/react";
-import { buildDownloadUrl } from "convex-fs";
-import { api } from "../convex/_generated/api";
 import {
-  FolderInput,
-  Copy,
-  Trash2,
-  X,
-  Upload,
-  CheckCircle,
   AlertCircle,
   Bomb,
-  FileVideo,
-  FileAudio,
-  FileText,
-  FileCode,
-  File,
+  CheckCircle,
+  Copy,
+  FolderInput,
+  Image,
+  ImagePlus,
+  Trash2,
+  X,
 } from "lucide-react";
+import { buildDownloadUrl } from "convex-fs";
+import { api } from "../convex/_generated/api";
 import "./App.css";
 
 // Path prefix for ConvexFS routes (must match http.ts)
 const FS_PREFIX = "/fs";
-
-// Helper to get the appropriate icon for a file type
-function getFileIcon(contentType: string) {
-  if (contentType.startsWith("video/")) return FileVideo;
-  if (contentType.startsWith("audio/")) return FileAudio;
-  if (contentType.startsWith("text/")) return FileText;
-  if (
-    contentType === "application/json" ||
-    contentType === "application/javascript" ||
-    contentType.includes("xml")
-  )
-    return FileCode;
-  return File;
-}
-
-// Check if a content type is an image
-function isImageType(contentType: string): boolean {
-  return contentType.startsWith("image/");
-}
 
 // Types
 type UploadingFile = {
@@ -124,8 +101,8 @@ function ExpirationStatus({
 }
 
 function App() {
-  const [uploading, setUploading] = useState<UploadingFile[]>([]);
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [uploading, setUploading] = useState<Array<UploadingFile>>([]);
+  const [toasts, setToasts] = useState<Array<Toast>>([]);
   const [dragActive, setDragActive] = useState(false);
   const [moveModal, setMoveModal] = useState<MoveModalState>(null);
   const [isMoving, setIsMoving] = useState(false);
@@ -137,7 +114,7 @@ function App() {
   const [isSettingExpiration, setIsSettingExpiration] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const commitFile = useMutation(api.files.commitFile);
+  const commitImage = useMutation(api.files.commitImage);
   const moveFile = useMutation(api.files.moveFile);
   const copyFile = useMutation(api.files.copyFile);
   const deleteFile = useMutation(api.files.deleteFile);
@@ -147,7 +124,7 @@ function App() {
     results: images,
     status,
     loadMore,
-  } = usePaginatedQuery(api.files.listFiles, {}, { initialNumItems: 24 });
+  } = usePaginatedQuery(api.files.listImages, {}, { initialNumItems: 24 });
 
   // Get site URL for uploads and image URLs
   const siteUrl = (() => {
@@ -170,7 +147,7 @@ function App() {
   // Add a toast message
   const addToast = useCallback(
     (message: string, type: "error" | "success" = "error") => {
-      const id = Math.random().toString(36).substring(7);
+      const id = Math.random().toString(36).slice(7);
       setToasts((prev) => [...prev, { id, message, type }]);
       // Auto-dismiss after 5 seconds
       setTimeout(() => {
@@ -305,13 +282,22 @@ function App() {
   // Handle file upload
   const uploadFiles = useCallback(
     async (files: FileList) => {
-      const validFiles = Array.from(files);
+      const validFiles: Array<File> = [];
+
+      // Validate files are images
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) {
+          addToast(`"${file.name}" is not an image file`);
+        } else {
+          validFiles.push(file);
+        }
+      }
 
       if (validFiles.length === 0) return;
 
       // Add files to uploading state
-      const uploadStates: UploadingFile[] = validFiles.map((file) => ({
-        id: Math.random().toString(36).substring(7),
+      const uploadStates: Array<UploadingFile> = validFiles.map((file) => ({
+        id: Math.random().toString(36).slice(7),
         name: file.name,
         progress: 0,
       }));
@@ -364,7 +350,7 @@ function App() {
             });
 
             // 2. Commit the image to the filesystem
-            await commitFile({
+            await commitImage({
               blobId,
               filename: file.name,
               contentType: file.type,
@@ -382,7 +368,7 @@ function App() {
         }),
       );
     },
-    [siteUrl, commitFile, addToast],
+    [siteUrl, commitImage, addToast],
   );
 
   // Drag handlers
@@ -430,7 +416,7 @@ function App() {
 
   return (
     <div className="app">
-      <h1>Convex FS - File Gallery</h1>
+      <h1>Convex FS - Photo Gallery</h1>
 
       {/* Drop Zone */}
       <div
@@ -441,9 +427,9 @@ function App() {
         onClick={handleClick}
       >
         <div className="drop-zone-icon">
-          <Upload size={48} strokeWidth={1.5} />
+          <ImagePlus size={48} strokeWidth={1.5} />
         </div>
-        <p className="drop-zone-text">Drop files here or click to upload</p>
+        <p className="drop-zone-text">Drop images here or click to upload</p>
         <p className="drop-zone-subtext">Supports multiple files</p>
 
         {/* Upload Progress */}
@@ -464,20 +450,21 @@ function App() {
       <input
         ref={fileInputRef}
         type="file"
+        accept="image/*"
         multiple
         className="hidden-input"
         onChange={handleFileChange}
       />
 
-      {/* File Grid */}
+      {/* Photo Grid */}
       {status === "LoadingFirstPage" ? (
-        <div className="loading-state">Loading files...</div>
+        <div className="loading-state">Loading images...</div>
       ) : images.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">
-            <File size={64} strokeWidth={1} />
+            <Image size={64} strokeWidth={1} />
           </div>
-          <p className="empty-state-text">No files yet. Upload some!</p>
+          <p className="empty-state-text">No images yet. Upload some!</p>
         </div>
       ) : (
         <>
@@ -498,39 +485,16 @@ function App() {
                     className={`photo-grid-item ${isExpired ? "expired" : ""}`}
                   >
                     <div className="photo-grid-item-image-container">
-                      {isImageType(image.contentType) ? (
-                        <img
-                          src={buildDownloadUrl(
-                            siteUrl,
-                            FS_PREFIX,
-                            image.blobId,
-                            image.path,
-                          )}
-                          alt={image.path}
-                          loading="lazy"
-                        />
-                      ) : (
-                        <a
-                          href={buildDownloadUrl(
-                            siteUrl,
-                            FS_PREFIX,
-                            image.blobId,
-                            image.path,
-                            { filename: image.path },
-                          )}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="file-icon-link"
-                        >
-                          {(() => {
-                            const Icon = getFileIcon(image.contentType);
-                            return <Icon size={64} strokeWidth={1.5} />;
-                          })()}
-                          <span className="file-mime-type">
-                            {image.contentType}
-                          </span>
-                        </a>
-                      )}
+                      <img
+                        src={buildDownloadUrl(
+                          siteUrl,
+                          FS_PREFIX,
+                          image.blobId,
+                          image.path,
+                        )}
+                        alt={image.path}
+                        loading="lazy"
+                      />
                       {isExpired && (
                         <div className="expired-overlay">
                           <X size={64} strokeWidth={3} />

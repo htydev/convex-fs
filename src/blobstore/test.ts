@@ -1,9 +1,5 @@
-import type {
-  BlobStore,
-  DeleteResult,
-  DownloadUrlOptions,
-  PutOptions,
-} from "./types.js";
+import { MAX_FILE_SIZE_BYTES } from "./types.js";
+import type { BlobStore, DeleteResult, PutOptions } from "./types.js";
 
 /**
  * In-memory BlobStore for testing.
@@ -27,54 +23,25 @@ export function createTestBlobStore(): BlobStore & {
       );
     },
 
-    async generateDownloadUrl(
-      key: string,
-      opts?: DownloadUrlOptions,
-    ): Promise<string> {
-      let url = `test://${key}`;
-      if (opts?.extraParams && Object.keys(opts.extraParams).length > 0) {
-        const queryString = Object.entries(opts.extraParams)
-          .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-          .join("&");
-        url += `?${queryString}`;
-      }
-      return url;
+    async generateDownloadUrl(key: string): Promise<string> {
+      return `test://${key}`;
     },
 
     async put(
       key: string,
-      data: Blob | Uint8Array | ReadableStream<Uint8Array>,
+      data: Blob | Uint8Array,
       opts?: PutOptions,
     ): Promise<void> {
-      let bytes: Uint8Array;
-
-      if (data instanceof ReadableStream) {
-        // Collect all chunks from the stream
-        const chunks: Uint8Array[] = [];
-        const reader = data.getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-        }
-
-        // Concatenate chunks into single Uint8Array
-        const totalLength = chunks.reduce(
-          (sum, chunk) => sum + chunk.length,
-          0,
+      // Check file size limit
+      const size = data instanceof Blob ? data.size : data.byteLength;
+      if (size > MAX_FILE_SIZE_BYTES) {
+        throw new Error(
+          `File too large. Maximum size is ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB.`,
         );
-        bytes = new Uint8Array(totalLength);
-        let offset = 0;
-        for (const chunk of chunks) {
-          bytes.set(chunk, offset);
-          offset += chunk.length;
-        }
-      } else if (data instanceof Blob) {
-        bytes = new Uint8Array(await data.arrayBuffer());
-      } else {
-        bytes = data;
       }
 
+      const bytes =
+        data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : data;
       blobs.set(key, {
         data: bytes,
         contentType: opts?.contentType ?? "application/octet-stream",

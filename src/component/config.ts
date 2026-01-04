@@ -6,9 +6,9 @@
  */
 
 import { v } from "convex/values";
+import stringify from "fast-json-stable-stringify";
 import { internalMutation, internalQuery } from "./_generated/server.js";
 import { configValidator, storageConfigValidator } from "./types.js";
-import stringify from "fast-json-stable-stringify";
 
 async function sha256Hex(s: string): Promise<string> {
   const bytes = new TextEncoder().encode(s);

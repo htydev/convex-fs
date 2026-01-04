@@ -5,7 +5,7 @@
  * across Convex function invocations. This is only useful in convex-test
  * where everything runs in a single process.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+
 export interface TestBlobStoreConfig {
   // No configuration needed - just a marker type
 }
@@ -58,12 +58,6 @@ export interface UploadUrlOptions {
 export interface DownloadUrlOptions {
   /** URL expiration time in seconds. Defaults to 3600 (1 hour). */
   expiresIn?: number;
-  /**
-   * Extra query parameters to include in the URL.
-   * These will be included in the token signature (if token auth is enabled)
-   * and passed through to the CDN, where edge rules can act on them.
-   */
-  extraParams?: Record<string, string>;
 }
 
 /**
@@ -72,8 +66,6 @@ export interface DownloadUrlOptions {
 export interface PutOptions {
   /** Content-Type of the blob. */
   contentType?: string;
-  /** Content-Length hint (useful for streaming uploads when size is known). */
-  contentLength?: number;
 }
 
 /**
@@ -85,31 +77,8 @@ export interface PutOptions {
  */
 export type DeleteResult = { status: "deleted" } | { status: "not_found" };
 
-// =============================================================================
-// Client-facing type aliases
-// =============================================================================
-
-/**
- * Bunny.net Edge Storage configuration.
- * Alias for BunnyBlobStoreConfig for use in client APIs.
- */
-export type BunnyStorageConfig = BunnyBlobStoreConfig & { type: "bunny" };
-
-/**
- * In-memory test storage configuration.
- * Alias for TestBlobStoreConfig for use in client APIs.
- */
-export type TestStorageConfig = TestBlobStoreConfig & { type: "test" };
-
-/**
- * Storage configuration discriminated union.
- * Used by ConvexFS client to configure the storage backend.
- */
-export type StorageConfig = BunnyStorageConfig | TestStorageConfig;
-
-// =============================================================================
-// BlobStore Interface
-// =============================================================================
+/** Maximum file size in bytes (15MB). */
+export const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 
 /**
  * Interface for a blob store that supports basic CRUD operations
@@ -120,35 +89,37 @@ export interface BlobStore {
    * Generate a presigned URL for uploading a blob.
    * Clients can PUT directly to this URL.
    */
-  generateUploadUrl(key: string, opts?: UploadUrlOptions): Promise<string>;
+  generateUploadUrl: (key: string, opts?: UploadUrlOptions) => Promise<string>;
 
   /**
    * Generate a presigned URL for downloading a blob.
    * Clients can GET directly from this URL.
    */
-  generateDownloadUrl(key: string, opts?: DownloadUrlOptions): Promise<string>;
+  generateDownloadUrl: (
+    key: string,
+    opts?: DownloadUrlOptions,
+  ) => Promise<string>;
 
   /**
    * Upload a blob directly from the server.
-   * Accepts buffered data (Blob, Uint8Array) or a ReadableStream for streaming uploads.
-   * Streaming uploads allow large files to be uploaded in constant memory.
+   * Maximum file size is 15MB.
    */
-  put(
+  put: (
     key: string,
-    data: Blob | Uint8Array | ReadableStream<Uint8Array>,
+    data: Blob | Uint8Array,
     opts?: PutOptions,
-  ): Promise<void>;
+  ) => Promise<void>;
 
   /**
    * Download a blob from storage.
    * Returns null if the blob does not exist.
    */
-  get(key: string): Promise<Blob | null>;
+  get: (key: string) => Promise<Blob | null>;
 
   /**
    * Delete a blob.
    * Returns { status: "deleted" } on success, { status: "not_found" } if blob didn't exist.
    * Throws on storage errors (5xx, network issues).
    */
-  delete(key: string): Promise<DeleteResult>;
+  delete: (key: string) => Promise<DeleteResult>;
 }

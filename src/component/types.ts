@@ -1,4 +1,5 @@
-import { v, type Infer } from "convex/values";
+import { v } from "convex/values";
+import type { Infer } from "convex/values";
 
 /**
  * Validator for Bunny.net Edge Storage configuration.
