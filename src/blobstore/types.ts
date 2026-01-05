@@ -58,6 +58,8 @@ export interface UploadUrlOptions {
 export interface DownloadUrlOptions {
   /** URL expiration time in seconds. Defaults to 3600 (1 hour). */
   expiresIn?: number;
+  /** Extra parameters to include in the URL (and signature if token auth is enabled). */
+  extraParams?: Record<string, string>;
 }
 
 /**

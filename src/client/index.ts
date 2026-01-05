@@ -713,11 +713,11 @@ export function registerRoutes(
       const blobId = crypto.randomUUID();
 
       try {
-        // Stream the request body directly to storage (data plane)
+        // Read request body as bytes and upload to storage
+        const bodyData = await req.arrayBuffer();
         const store = createBlobStore(storage);
-        await store.put(blobId, req.body!, {
+        await store.put(blobId, new Uint8Array(bodyData), {
           contentType,
-          contentLength: contentLength > 0 ? contentLength : undefined,
         });
 
         // Register pending upload with component (control plane)

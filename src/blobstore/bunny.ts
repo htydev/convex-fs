@@ -16,17 +16,34 @@ const DEFAULT_TOKEN_TTL = 3600; // 1 hour
  *
  * Note: Requires "URL Token Authentication" to be enabled on the Pull Zone
  * with the authentication type set to use SHA256 (advanced mode).
+ *
+ * The signature format is: SHA256(token_security_key + path + expiration + encoded_query_parameters)
+ * where encoded_query_parameters is optional and must be sorted alphabetically.
  */
 async function signBunnyUrl(
   baseUrl: string,
   path: string,
   tokenKey: string,
   expiresIn: number,
+  extraParams?: Record<string, string>,
 ): Promise<string> {
   const expirationTimestamp = Math.floor(Date.now() / 1000) + expiresIn;
 
-  // Advanced token format: SHA256(token_security_key + path + expiration)
-  const tokenContent = `${tokenKey}${path}${expirationTimestamp}`;
+  // Build sorted query string for extra params (required for signature)
+  let extraQueryString = "";
+  if (extraParams && Object.keys(extraParams).length > 0) {
+    const sorted = Object.entries(extraParams).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    extraQueryString = sorted
+      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+      .join("&");
+  }
+
+  // Advanced token format: SHA256(token_security_key + path + expiration + encoded_query_params)
+  const tokenContent = extraQueryString
+    ? `${tokenKey}${path}${expirationTimestamp}${extraQueryString}`
+    : `${tokenKey}${path}${expirationTimestamp}`;
 
   // Compute SHA256 hash using Web Crypto
   const encoder = new TextEncoder();
@@ -40,7 +57,12 @@ async function signBunnyUrl(
     .replace(/\//g, "_")
     .replace(/=/g, "");
 
-  return `${baseUrl}${path}?token=${base64Token}&expires=${expirationTimestamp}`;
+  // Build final URL: token and expires first, then extra params
+  let url = `${baseUrl}${path}?token=${base64Token}&expires=${expirationTimestamp}`;
+  if (extraQueryString) {
+    url += `&${extraQueryString}`;
+  }
+  return url;
 }
 
 /**
@@ -91,13 +113,26 @@ export function createBunnyBlobStore(config: BunnyBlobStoreConfig): BlobStore {
     ): Promise<string> {
       const path = `/${key}`;
 
-      // If token authentication is configured, sign the URL
+      // If token authentication is configured, sign the URL (including extra params)
       if (tokenKey) {
         const expiresIn = opts?.expiresIn ?? DEFAULT_TOKEN_TTL;
-        return signBunnyUrl(cdnBaseUrl, path, tokenKey, expiresIn);
+        return signBunnyUrl(
+          cdnBaseUrl,
+          path,
+          tokenKey,
+          expiresIn,
+          opts?.extraParams,
+        );
       }
 
-      // No token auth - return plain CDN URL
+      // No token auth - return plain CDN URL with extra params if provided
+      if (opts?.extraParams && Object.keys(opts.extraParams).length > 0) {
+        const queryString = Object.entries(opts.extraParams)
+          .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+          .join("&");
+        return `${cdnBaseUrl}${path}?${queryString}`;
+      }
+
       return `${cdnBaseUrl}${path}`;
     },
 

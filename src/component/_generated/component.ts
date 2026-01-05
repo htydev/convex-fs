@@ -99,29 +99,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
-      getBlob: FunctionReference<
-        "action",
-        "internal",
-        {
-          blobId: string;
-          config: {
-            blobGracePeriod?: number;
-            downloadUrlTtl?: number;
-            storage:
-              | {
-                  apiKey: string;
-                  cdnHostname: string;
-                  region?: string;
-                  storageZoneName: string;
-                  tokenKey?: string;
-                  type: "bunny";
-                }
-              | { type: "test" };
-          };
-        },
-        null | ArrayBuffer,
-        Name
-      >;
       getDownloadUrl: FunctionReference<
         "action",
         "internal",
@@ -142,31 +119,9 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               | { type: "test" };
           };
           ttl?: number;
+          extraParams?: Record<string, string>;
         },
         string,
-        Name
-      >;
-      getFile: FunctionReference<
-        "action",
-        "internal",
-        {
-          config: {
-            blobGracePeriod?: number;
-            downloadUrlTtl?: number;
-            storage:
-              | {
-                  apiKey: string;
-                  cdnHostname: string;
-                  region?: string;
-                  storageZoneName: string;
-                  tokenKey?: string;
-                  type: "bunny";
-                }
-              | { type: "test" };
-          };
-          path: string;
-        },
-        null | { contentType: string; data: ArrayBuffer; size: number },
         Name
       >;
       list: FunctionReference<
@@ -230,6 +185,31 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           };
           destPath: string;
           sourcePath: string;
+        },
+        null,
+        Name
+      >;
+      registerPendingUpload: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config: {
+            blobGracePeriod?: number;
+            downloadUrlTtl?: number;
+            storage:
+              | {
+                  apiKey: string;
+                  cdnHostname: string;
+                  region?: string;
+                  storageZoneName: string;
+                  tokenKey?: string;
+                  type: "bunny";
+                }
+              | { type: "test" };
+          };
+          blobId: string;
+          contentType: string;
+          size: number;
         },
         null,
         Name
@@ -330,55 +310,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
-      uploadBlob: FunctionReference<
-        "action",
-        "internal",
-        {
-          config: {
-            blobGracePeriod?: number;
-            downloadUrlTtl?: number;
-            storage:
-              | {
-                  apiKey: string;
-                  cdnHostname: string;
-                  region?: string;
-                  storageZoneName: string;
-                  tokenKey?: string;
-                  type: "bunny";
-                }
-              | { type: "test" };
-          };
-          contentType: string;
-          data: ArrayBuffer;
-        },
-        { blobId: string },
-        Name
-      >;
-      writeFile: FunctionReference<
-        "action",
-        "internal",
-        {
-          config: {
-            blobGracePeriod?: number;
-            downloadUrlTtl?: number;
-            storage:
-              | {
-                  apiKey: string;
-                  cdnHostname: string;
-                  region?: string;
-                  storageZoneName: string;
-                  tokenKey?: string;
-                  type: "bunny";
-                }
-              | { type: "test" };
-          };
-          contentType: string;
-          data: ArrayBuffer;
-          path: string;
-        },
-        null,
-        Name
-      >;
     };
     ops: {
       basics: {
@@ -427,52 +358,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             path: string;
           },
           null,
-          Name
-        >;
-        getBlob: FunctionReference<
-          "action",
-          "internal",
-          {
-            blobId: string;
-            config: {
-              blobGracePeriod?: number;
-              downloadUrlTtl?: number;
-              storage:
-                | {
-                    apiKey: string;
-                    cdnHostname: string;
-                    region?: string;
-                    storageZoneName: string;
-                    tokenKey?: string;
-                    type: "bunny";
-                  }
-                | { type: "test" };
-            };
-          },
-          null | ArrayBuffer,
-          Name
-        >;
-        getFile: FunctionReference<
-          "action",
-          "internal",
-          {
-            config: {
-              blobGracePeriod?: number;
-              downloadUrlTtl?: number;
-              storage:
-                | {
-                    apiKey: string;
-                    cdnHostname: string;
-                    region?: string;
-                    storageZoneName: string;
-                    tokenKey?: string;
-                    type: "bunny";
-                  }
-                | { type: "test" };
-            };
-            path: string;
-          },
-          null | { contentType: string; data: ArrayBuffer; size: number },
           Name
         >;
         list: FunctionReference<
@@ -567,31 +452,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             path: string;
             size: number;
           },
-          Name
-        >;
-        writeFile: FunctionReference<
-          "action",
-          "internal",
-          {
-            config: {
-              blobGracePeriod?: number;
-              downloadUrlTtl?: number;
-              storage:
-                | {
-                    apiKey: string;
-                    cdnHostname: string;
-                    region?: string;
-                    storageZoneName: string;
-                    tokenKey?: string;
-                    type: "bunny";
-                  }
-                | { type: "test" };
-            };
-            contentType: string;
-            data: ArrayBuffer;
-            path: string;
-          },
-          null,
           Name
         >;
       };
@@ -714,6 +574,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               | { type: "test" };
           };
           ttl?: number;
+          extraParams?: Record<string, string>;
         },
         string,
         Name

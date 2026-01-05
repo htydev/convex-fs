@@ -61,8 +61,8 @@ export type DownloadAuthCallback = (
 // =============================================================================
 
 export type {
-  BunnyStorageConfig,
-  TestStorageConfig,
+  BunnyBlobStoreConfig as BunnyStorageConfig,
+  TestBlobStoreConfig as TestStorageConfig,
   StorageConfig,
 } from "../blobstore/index.js";
 

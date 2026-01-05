@@ -1,11 +1,12 @@
 import { v } from "convex/values";
 import {
   action,
+  mutation,
   internalMutation,
   internalQuery,
 } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
-import { MAX_FILE_SIZE_BYTES, createBlobStore } from "./blobstore/index.js";
+import { MAX_FILE_SIZE_BYTES, createBlobStore } from "../blobstore/index.js";
 import { configValidator } from "./types.js";
 
 const DEFAULT_DOWNLOAD_URL_TTL = 3600; // 1 hour
@@ -26,6 +27,38 @@ export const createUpload = internalMutation({
       contentType: args.contentType,
       size: args.size,
     });
+  },
+});
+
+/**
+ * Register a pending upload that was uploaded directly to storage.
+ * Called by client after direct-to-storage upload (data plane in caller's context).
+ */
+export const registerPendingUpload = mutation({
+  args: {
+    config: configValidator,
+    blobId: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { config, blobId, contentType, size } = args;
+
+    // Store config for background GC (components can't access env vars)
+    await ctx.runMutation(internal.config.ensureConfigStored, { config });
+
+    // Record the pending upload with metadata
+    const ttl = DEFAULT_UPLOAD_COMMIT_TTL;
+    const expiresAt = Date.now() + ttl * 1000;
+    await ctx.db.insert("uploads", {
+      blobId,
+      expiresAt,
+      contentType,
+      size,
+    });
+
+    return null;
   },
 });
 
@@ -121,15 +154,19 @@ export const getDownloadUrl = action({
     config: configValidator,
     blobId: v.string(),
     ttl: v.optional(v.number()),
+    extraParams: v.optional(v.record(v.string(), v.string())),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
-    const { config, blobId, ttl } = args;
+    const { config, blobId, ttl, extraParams } = args;
 
     const store = createBlobStore(config.storage);
     const effectiveTtl =
       ttl ?? config.downloadUrlTtl ?? DEFAULT_DOWNLOAD_URL_TTL;
 
-    return store.generateDownloadUrl(blobId, { expiresIn: effectiveTtl });
+    return store.generateDownloadUrl(blobId, {
+      expiresIn: effectiveTtl,
+      extraParams,
+    });
   },
 });
